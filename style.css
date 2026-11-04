@@ -1,0 +1,141 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #05050a;
+  font-family: 'Courier New', Courier, monospace;
+}
+
+#game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#gameCanvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 16 / 9;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: #05050a;
+  box-shadow: 0 0 30px rgba(220, 30, 30, 0.25);
+}
+
+/* CONTROLLI TOUCH PER IPHONE */
+#touch-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 24px env(safe-area-inset-right, 24px) 24px env(safe-area-inset-left, 24px);
+  z-index: 100;
+}
+
+.touch-btn {
+  pointer-events: auto;
+  user-select: none;
+  background: rgba(20, 25, 45, 0.65);
+  border: 2px solid rgba(240, 200, 40, 0.6);
+  border-radius: 16px;
+  color: #fff;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: transform 0.06s ease, background 0.06s ease, border-color 0.06s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+}
+
+.touch-btn:active, .touch-btn.pressed {
+  background: rgba(240, 200, 40, 0.7);
+  border-color: #fff;
+  color: #000;
+  transform: scale(0.92);
+}
+
+/* D-PAD A CROCE */
+.dpad-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: env(safe-area-inset-bottom, 8px);
+}
+
+.dpad-middle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dpad-center {
+  width: 52px;
+  height: 52px;
+  background: rgba(10, 15, 30, 0.5);
+  border-radius: 8px;
+}
+
+.dpad-btn {
+  width: 60px;
+  height: 52px;
+  font-size: 20px;
+  color: #f5d042;
+}
+
+/* PULSANTONE DI SALTO */
+.action-zone {
+  margin-bottom: env(safe-area-inset-bottom, 16px);
+  margin-right: 12px;
+}
+
+.jump-btn {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(220, 40, 40, 0.85) 0%, rgba(150, 15, 15, 0.9) 100%);
+  border: 3px solid #ffcc00;
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(220, 30, 30, 0.5);
+}
+
+.jump-btn:active, .jump-btn.pressed {
+  background: #ff4444;
+  transform: scale(0.90);
+  box-shadow: 0 2px 10px rgba(255, 200, 0, 0.8);
+}
+
+/* Su schermi desktop i pulsanti touch sono semitrasparenti e discreti */
+@media (hover: hover) and (pointer: fine) {
+  #touch-controls {
+    opacity: 0.35;
+    transition: opacity 0.2s ease;
+  }
+  #touch-controls:hover {
+    opacity: 0.9;
+  }
+}

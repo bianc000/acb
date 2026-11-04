@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Donkey Brissago - La Riconquista della Quarta Lega</title>
+  
+  <!-- Ottimizzazioni per iPhone e Schermi Touch -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Donkey Brissago">
+  <meta name="theme-color" content="#0a0a14">
+  
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+    <!-- Controlli Touch Virtuali per iPhone / Smartphone -->
+    <div id="touch-controls">
+      <!-- D-Pad a Sinistra -->
+      <div class="dpad-zone">
+        <button id="btn-up" class="touch-btn dpad-btn" data-key="ArrowUp">▲</button>
+        <div class="dpad-middle">
+          <button id="btn-left" class="touch-btn dpad-btn" data-key="ArrowLeft">◀</button>
+          <div class="dpad-center"></div>
+          <button id="btn-right" class="touch-btn dpad-btn" data-key="ArrowRight">▶</button>
+        </div>
+        <button id="btn-down" class="touch-btn dpad-btn" data-key="ArrowDown">▼</button>
+      </div>
+
+      <!-- Pulsante Salto / Azione a Destra -->
+      <div class="action-zone">
+        <button id="btn-jump" class="touch-btn jump-btn" data-key="Space">
+          <span>SALTA</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
