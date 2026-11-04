@@ -76,6 +76,27 @@ html, body {
   transform: scale(0.92);
 }
 
+/* PULSANTE PAUSA IN ALTO A DESTRA */
+.pause-btn {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #00f0ff;
+  color: #00f0ff;
+  z-index: 150;
+  pointer-events: auto;
+  box-shadow: 0 4px 15px rgba(0, 240, 255, 0.25);
+}
+
+.pause-btn:active, .pause-btn.pressed {
+  background: #00f0ff;
+  color: #000;
+}
+
 /* D-PAD A CROCE */
 .dpad-zone {
   display: flex;

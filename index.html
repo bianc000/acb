@@ -11,11 +11,16 @@
   <meta name="apple-mobile-web-app-title" content="Donkey Brissago">
   <meta name="theme-color" content="#0a0a14">
   
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
   <div id="game-container">
     <canvas id="gameCanvas" width="1280" height="720"></canvas>
+
+    <!-- Pulsante Pausa (P) -->
+    <button id="btn-pause" class="touch-btn pause-btn" data-key="KeyP" title="Pausa (P)">
+      <span>⏸ PAUSA</span>
+    </button>
 
     <!-- Controlli Touch Virtuali per iPhone / Smartphone -->
     <div id="touch-controls">
@@ -42,6 +47,6 @@
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="game.js?v=3"></script>
 </body>
 </html>
