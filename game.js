@@ -444,18 +444,33 @@ class Platform {
 }
 
 class Ladder {
-  constructor(x, topY, bottomY) {
+  constructor(x, topY, bottomY, isBroken = false) {
     this.x = x;
     this.topY = Math.min(topY, bottomY);
     this.bottomY = Math.max(topY, bottomY);
     this.width = 24;
+    this.isBroken = isBroken;
   }
   canClimb(px, py) {
+    if (this.isBroken) return false;
     return Math.abs(px - this.x) <= 22 && py >= this.topY - 14 && py <= this.bottomY + 14;
   }
   draw(ctx) {
-    for (let y = this.topY; y < this.bottomY; y += 16) {
-      ctx.drawImage(sprites.ladder, this.x - 12, y);
+    if (this.isBroken) {
+      const mid = (this.topY + this.bottomY) / 2;
+      for (let y = this.topY; y < mid - 14; y += 16) {
+        ctx.drawImage(sprites.ladder, this.x - 12, y);
+      }
+      for (let y = mid + 14; y < this.bottomY; y += 16) {
+        ctx.drawImage(sprites.ladder, this.x - 12, y);
+      }
+      // Segnale scala spezzata
+      ctx.fillStyle = '#ff2222';
+      ctx.fillRect(this.x - 8, mid - 2, 16, 4);
+    } else {
+      for (let y = this.topY; y < this.bottomY; y += 16) {
+        ctx.drawImage(sprites.ladder, this.x - 12, y);
+      }
     }
   }
 }
@@ -467,45 +482,69 @@ function buildLevelGeometry(level) {
   platforms = [];
   ladders = [];
 
-  if (level === 1) {
-    // LIVELLO 1 (5 Tiers)
-    platforms.push(
-      new Platform(80, 130, 480, 130),     // Cima Renzo
-      new Platform(380, 190, 1140, 230),   // Tier 4 (Alex Verzaschesi)
-      new Platform(140, 370, 1140, 330),   // Tier 3 (Pedemonte 11)
-      new Platform(140, 470, 1140, 510),   // Tier 2 (Aramaici)
-      new Platform(140, 630, 1140, 590),   // Tier 1 (Codeborgo)
-      new Platform(60, 695, 1220, 695)     // Terra
-    );
+  // Piattaforme autentiche stile Arcade Donkey Kong (6 Tiers + Terra a pendenze alternate)
+  // [0] Cima Renzo (Pianeggiante in alto a sinistra)
+  // [1] Girder 5 (Tier 5: inclinato a DESTRA)
+  // [2] Girder 4 (Tier 4: inclinato a SINISTRA)
+  // [3] Girder 3 (Tier 3: inclinato a DESTRA)
+  // [4] Girder 2 (Tier 2: inclinato a SINISTRA)
+  // [5] Girder 1 (Tier 1: inclinato a DESTRA)
+  // [6] Terra (Piano 0: pianeggiante)
 
-    ladders.push(
-      new Ladder(1050, 595, 695), new Ladder(420, 620, 695),
-      new Ladder(240, 475, 625), new Ladder(800, 495, 605),
-      new Ladder(1050, 335, 505), new Ladder(520, 355, 485),
-      new Ladder(240, 200, 365), new Ladder(860, 220, 340),
-      new Ladder(440, 130, 195)
-    );
-  } else {
-    // LIVELLO 2 (Più Piani, 6 Tiers inclinati più ripidi!)
-    platforms.push(
-      new Platform(80, 110, 460, 110),     // Cima Renzo (ancora più in alto!)
-      new Platform(340, 160, 1160, 200),   // Tier 5: Attaccante Camorino
-      new Platform(120, 300, 1160, 260),   // Tier 4: Portiere Chironico
-      new Platform(120, 400, 1160, 440),   // Tier 3: Capitano Gnosca
-      new Platform(120, 540, 1160, 500),   // Tier 2: Terzino Aquila ("LANCIAMI!")
-      new Platform(120, 620, 1160, 650),   // Tier 1: Slalom stretto
-      new Platform(50, 700, 1230, 700)     // Terra
-    );
+  const slope = (level === 2) ? 46 : 38;
 
-    ladders.push(
-      new Ladder(1080, 645, 700), new Ladder(350, 625, 700),
-      new Ladder(200, 535, 625), new Ladder(880, 505, 640),
-      new Ladder(1060, 435, 505), new Ladder(480, 410, 530),
-      new Ladder(220, 295, 405), new Ladder(850, 265, 435),
-      new Ladder(1020, 195, 265), new Ladder(420, 165, 295),
-      new Ladder(410, 110, 165)
-    );
-  }
+  platforms.push(
+    new Platform(80, 100, 440, 100),                          // [0] Cima Renzo
+    new Platform(140, 175, 1160, 175 + slope),                // [1] Girder 5
+    new Platform(120, 325, 1160, 325 - slope),                // [2] Girder 4
+    new Platform(120, 390, 1160, 390 + slope),                // [3] Girder 3
+    new Platform(120, 535, 1160, 535 - slope),                // [4] Girder 2
+    new Platform(120, 600, 1160, 600 + slope),                // [5] Girder 1
+    new Platform(50, 695, 1230, 695)                          // [6] Terra
+  );
+
+  // Calcolo quote di superficie per aggancio millimetrico delle scale:
+  const g1_rightY = platforms[5].getSurfaceY(1100);
+  const g1_leftY  = platforms[5].getSurfaceY(180);
+  const g2_rightY = platforms[4].getSurfaceY(1100);
+  const g2_leftY  = platforms[4].getSurfaceY(180);
+  const g3_rightY = platforms[3].getSurfaceY(1100);
+  const g3_leftY  = platforms[3].getSurfaceY(180);
+  const g4_rightY = platforms[2].getSurfaceY(1100);
+  const g4_leftY  = platforms[2].getSurfaceY(180);
+  const g5_rightY = platforms[1].getSurfaceY(1100);
+  const g5_renzoY = platforms[1].getSurfaceY(380);
+
+  // SCALE OBBLIGATORIE A ZIG-ZAG (Impossibile salire solo a sinistra!)
+  // Per ogni piano il giocatore DEVE attraversare l'intera trave da destra a sinistra o viceversa!
+  ladders.push(
+    // 1. Dalla Terra a Girder 1: SOLO A DESTRA (x = 1100)
+    new Ladder(1100, g1_rightY, 695),
+
+    // 2. Da Girder 1 a Girder 2: SOLO A SINISTRA (x = 180)
+    new Ladder(180, g2_leftY, g1_leftY),
+
+    // 3. Da Girder 2 a Girder 3: SOLO A DESTRA (x = 1100)
+    new Ladder(1100, g3_rightY, g2_rightY),
+
+    // 4. Da Girder 3 a Girder 4: SOLO A SINISTRA (x = 180)
+    new Ladder(180, g4_leftY, g3_leftY),
+
+    // 5. Da Girder 4 a Girder 5: SOLO A DESTRA (x = 1100)
+    new Ladder(1100, g5_rightY, g4_rightY),
+
+    // 6. Da Girder 5 a Cima Renzo: A SINISTRA SOTTO RENZO (x = 380)
+    new Ladder(380, 100, g5_renzoY)
+  );
+
+  // SCALE SPEZZATE (DECOY): Trabocchetti visivi a metà trave (non scalabili!)
+  ladders.push(
+    new Ladder(420, platforms[5].getSurfaceY(420), 695, true),
+    new Ladder(640, platforms[4].getSurfaceY(640), platforms[5].getSurfaceY(640), true),
+    new Ladder(640, platforms[3].getSurfaceY(640), platforms[4].getSurfaceY(640), true),
+    new Ladder(640, platforms[2].getSurfaceY(640), platforms[3].getSurfaceY(640), true),
+    new Ladder(640, platforms[1].getSurfaceY(640), platforms[2].getSurfaceY(640), true)
+  );
 }
 
 // -------------------------------------------------------------------------
@@ -514,12 +553,12 @@ function buildLevelGeometry(level) {
 
 let hero = {
   name: 'JOAO',
-  x: 160,
+  x: 100,
   y: 695 - 52,
   vx: 0,
   vy: 0,
-  speed: 225,
-  jumpForce: -435,
+  speed: 230,
+  jumpForce: -380,
   isGrounded: true,
   isClimbing: false,
   facingRight: true,
@@ -530,10 +569,10 @@ let hero = {
 };
 
 let renzo = {
-  x: 140,
-  y: 44,
+  x: 120,
+  y: 14,
   isThrowing: false,
-  throwTimer: 2.5,
+  throwTimer: 2.1,
   animTimer: 0
 };
 
@@ -545,24 +584,28 @@ function setupRivalsForLevel(level) {
   rivals = [];
 
   if (level === 1) {
-    // Rivali Livello 1
+    // LIVELLO 1: Un rivale su ciascuna trave obbligatoria
     rivals.push(
-      { name: 'Codeborgo', sprite: sprites.codeborgo, plat: platforms[4], x: 600, speed: 95, dir: 1, pts: 200, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
-      { name: 'Aramaici', sprite: sprites.aramaici, plat: platforms[3], x: 450, speed: 145, dir: 1, pts: 300, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
-      { name: 'Pedemonte #11', sprite: sprites.pedemonte11, plat: platforms[2], x: 650, speed: 165, dir: 1, pts: 500, tagCol: '#ff4444', isPedemonte: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 },
-      { name: 'Alex (Verzaschesi)', sprite: sprites.alex, plat: platforms[1], x: 800, speed: 175, dir: 1, pts: 800, tagCol: '#28c8ff', isAlex: true, defeated: false, fallVy: 0, spin: 0 }
+      // Girder 1 (Tier 1): Codeborgo
+      { name: 'Codeborgo', sprite: sprites.codeborgo, plat: platforms[5], x: 600, speed: 110, dir: 1, pts: 200, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
+      // Girder 2 (Tier 2): Aramaici
+      { name: 'Aramaici', sprite: sprites.aramaici, plat: platforms[4], x: 700, speed: 155, dir: -1, pts: 300, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
+      // Girder 3 (Tier 3): Pedemonte #11 (Scatto d'ira se sei sul suo piano!)
+      { name: 'Pedemonte #11', sprite: sprites.pedemonte11, plat: platforms[3], x: 650, speed: 175, dir: 1, pts: 500, tagCol: '#ff4444', isPedemonte: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 },
+      // Girder 4 (Tier 4): Alex il Traditore (AS Verzaschesi)
+      { name: 'Alex (Verzaschesi)', sprite: sprites.alex, plat: platforms[2], x: 600, speed: 195, dir: -1, pts: 800, tagCol: '#28c8ff', isAlex: true, defeated: false, fallVy: 0, spin: 0 }
     );
   } else {
-    // Rivali Livello 2 (Più tosti!)
+    // LIVELLO 2: Rivali potenziati + Attaccante Camorino sulla trave 5 prima di Renzo!
     rivals.push(
-      // Tier 2: Terzino dell'Aquila (urla "LANCIAMI!")
-      { name: "Terzino Aquila", sprite: sprites.aquila, plat: platforms[4], x: 500, speed: 185, dir: 1, pts: 350, tagCol: '#28ff78', isAquila: true, bubbleTimer: 0, defeated: false, fallVy: 0, spin: 0 },
-      // Tier 3: Capitano dello Gnosca
-      { name: "Capitano Gnosca", sprite: sprites.gnosca, plat: platforms[3], x: 720, speed: 195, dir: -1, pts: 500, tagCol: '#f5d228', defeated: false, fallVy: 0, spin: 0 },
-      // Tier 4: Portiere del Chironico
-      { name: "Portiere Chironico", sprite: sprites.chironicoGk, plat: platforms[2], x: 450, speed: 205, dir: 1, pts: 650, tagCol: '#e6ff00', isChironicoGk: true, defeated: false, fallVy: 0, spin: 0 },
-      // Tier 5 (ultimo piano prima di Renzo): Attaccante del Camorino
-      { name: "Attaccante Camorino", sprite: sprites.camorino, plat: platforms[1], x: 850, speed: 240, dir: -1, pts: 1000, tagCol: '#ff3c64', isCamorino: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 }
+      // Girder 2 (Tier 2): Terzino dell'Aquila (urla "LANCIAMI!")
+      { name: "Terzino Aquila", sprite: sprites.aquila, plat: platforms[4], x: 650, speed: 195, dir: -1, pts: 400, tagCol: '#28ff78', isAquila: true, bubbleTimer: 0, defeated: false, fallVy: 0, spin: 0 },
+      // Girder 3 (Tier 3): Capitano dello Gnosca
+      { name: "Capitano Gnosca", sprite: sprites.gnosca, plat: platforms[3], x: 700, speed: 215, dir: 1, pts: 550, tagCol: '#f5d228', defeated: false, fallVy: 0, spin: 0 },
+      // Girder 4 (Tier 4): Portiere del Chironico (Guantoni enormi: hitbox allargata, K.O. consigliato con pallone!)
+      { name: "Portiere Chironico", sprite: sprites.chironicoGk, plat: platforms[2], x: 550, speed: 220, dir: -1, pts: 700, tagCol: '#e6ff00', isChironicoGk: true, defeated: false, fallVy: 0, spin: 0 },
+      // Girder 5 (Tier 5, sotto Renzo): Attaccante del Camorino (Scatta furioso con preavviso!)
+      { name: "Attaccante Camorino", sprite: sprites.camorino, plat: platforms[1], x: 750, speed: 260, dir: -1, pts: 1000, tagCol: '#ff3c64', isCamorino: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 }
     );
   }
 }
@@ -656,16 +699,16 @@ function handleGlobalKey(code) {
 function applyHeroSelection() {
   if (selectedHeroIndex === 1) {
     hero.name = 'CIUFFO';
-    hero.speed = 255;
-    hero.jumpForce = -415;
+    hero.speed = 265;
+    hero.jumpForce = -365;
   } else if (selectedHeroIndex === 2) {
     hero.name = 'LEON';
-    hero.speed = 210;
-    hero.jumpForce = -465;
+    hero.speed = 220;
+    hero.jumpForce = -400; // Super salto di Leon!
   } else {
     hero.name = 'JOAO';
-    hero.speed = 225;
-    hero.jumpForce = -435;
+    hero.speed = 230;
+    hero.jumpForce = -380;
   }
 }
 
@@ -678,7 +721,8 @@ function startLevel(lvl) {
   kickedBalls = [];
   floatingTexts = [];
 
-  hero.x = 160;
+  // Spawna a sinistra sulla Terra: DEVE attraversare verso destra per salire!
+  hero.x = 100;
   hero.y = platforms[platforms.length - 1].y1 - 52;
   hero.vx = 0;
   hero.vy = 0;
@@ -688,9 +732,9 @@ function startLevel(lvl) {
   hero.hasBall = true;
   hero.ballCooldown = 0;
 
-  renzo.x = 140;
+  renzo.x = 120;
   renzo.y = platforms[0].y1 - 86;
-  renzo.throwTimer = 2.2;
+  renzo.throwTimer = 2.0;
   renzo.isThrowing = false;
 
   setupRivalsForLevel(lvl);
@@ -751,24 +795,27 @@ function update(dt) {
   renzo.throwTimer -= dt;
   if (renzo.throwTimer <= 0.6 && !renzo.isThrowing) {
     renzo.isThrowing = true;
-    renzo.animTimer = 0.7;
+    renzo.animTimer = 0.6;
   }
   if (renzo.isThrowing) {
     renzo.animTimer -= dt;
     if (renzo.animTimer <= 0) {
       renzo.isThrowing = false;
-      // Nel livello 2 Renzo tira più veloce!
-      renzo.throwTimer = (currentLevel === 2) ? 1.9 : 2.5;
+      renzo.throwTimer = (currentLevel === 2) ? 1.4 : 2.1;
+      const isBouncer = (currentLevel === 2 && Math.random() < 0.35);
       slippers.push({
         x: renzo.x + 80,
         y: renzo.y + 60,
-        vx: 190,
+        vx: 200,
         vy: 0,
         isFalling: true,
         rot: 0,
         dir: 1,
         active: true,
-        jumped: false
+        jumped: false,
+        isBouncer: isBouncer,
+        bouncesLeft: isBouncer ? 6 : 0,
+        droppedDownLadder: false
       });
     }
   }
@@ -776,30 +823,55 @@ function update(dt) {
   // Aggiorna ciabatte
   for (let i = slippers.length - 1; i >= 0; i--) {
     const s = slippers[i];
-    s.rot += s.dir * 12 * dt;
+    s.rot += s.dir * 14 * dt;
+
+    // Discesa ciabatta dalle scale (stile Donkey Kong classico!)
+    if (!s.isFalling && !s.droppedDownLadder) {
+      for (let l of ladders) {
+        if (!l.isBroken && Math.abs(s.x - l.x) < 16 && Math.abs(s.y - (l.topY - 14)) < 20) {
+          const heroNearOrUnder = (Math.abs(hero.x - l.x) < 80 && hero.y > s.y);
+          const dropChance = (currentLevel === 2) ? 0.45 : 0.25;
+          if (heroNearOrUnder || Math.random() < dropChance) {
+            s.isFalling = true;
+            s.droppedDownLadder = true;
+            s.x = l.x;
+            s.vx = 0;
+            s.vy = 260; // Piomba giù verticalmente per la scala!
+            break;
+          }
+        }
+      }
+    }
 
     if (s.isFalling) {
-      s.vy += 750 * dt;
+      s.vy += 800 * dt;
       s.x += s.vx * dt;
       s.y += s.vy * dt;
 
       for (let plat of platforms) {
         if (plat.containsX(s.x)) {
           const surfY = plat.getSurfaceY(s.x) - 14;
-          if (s.y >= surfY - 8 && s.y <= surfY + 16 && s.vy >= 0) {
-            s.y = surfY;
-            s.isFalling = false;
-            s.dir = (plat.y2 - plat.y1 >= 0) ? 1 : -1;
-            s.vx = s.dir * 200;
+          if (s.y >= surfY - 8 && s.y <= surfY + 20 && s.vy >= 0) {
+            if (s.isBouncer && s.bouncesLeft > 0) {
+              s.vy = -220; // Rimbalzo elastico in aria!
+              s.bouncesLeft--;
+              s.isFalling = true;
+            } else {
+              s.y = surfY;
+              s.isFalling = false;
+              s.dir = (plat.y2 - plat.y1 > 0) ? 1 : ((plat.y2 - plat.y1 < 0) ? -1 : -1);
+              s.vx = s.dir * (currentLevel === 2 ? 230 : 190);
+              s.droppedDownLadder = false;
+            }
             break;
           }
         }
       }
     } else {
-      s.x += s.dir * 200 * dt;
+      s.x += s.dir * (currentLevel === 2 ? 230 : 190) * dt;
       let onPlat = null;
       for (let plat of platforms) {
-        if (plat.containsX(s.x) && Math.abs(plat.getSurfaceY(s.x) - 14 - s.y) < 20) {
+        if (plat.containsX(s.x) && Math.abs(plat.getSurfaceY(s.x) - 14 - s.y) < 22) {
           onPlat = plat;
           s.y = plat.getSurfaceY(s.x) - 14;
           break;
@@ -845,7 +917,8 @@ function update(dt) {
     // K.O. Rivali
     for (let r of rivals) {
       if (!r.defeated) {
-        if (Math.hypot(b.x - (r.x + 20), b.y - (r.y + 20)) < 36) {
+        const hitRadius = r.isChironicoGk ? 40 : 36;
+        if (Math.hypot(b.x - (r.x + 20), b.y - (r.y + 20)) < hitRadius) {
           r.defeated = true;
           r.fallVy = -320;
           playSound('ko');
@@ -854,7 +927,9 @@ function update(dt) {
           if (r.isPedemonte) koMsg = `11 DEL PEDEMONTE ABBATTUTO! +1000 PTS!`;
           if (r.isAlex) koMsg = `ALEX IL TRADITORE MESSO K.O.! +1600 PTS!`;
           if (r.isCamorino) koMsg = `BOMBER DEL CAMORINO STESO! +2000 PTS!`;
-          if (r.isAquila) koMsg = `AQUILA ZITTITA! +700 PTS!`;
+          if (r.isAquila) koMsg = `AQUILA ZITTITA! +800 PTS!`;
+          if (r.isChironicoGk) koMsg = `GOL SOTTO L'INCROCIO AL CHIRONICO! +1400 PTS!`;
+          if (r.name.includes('Gnosca')) koMsg = `CAPITANO DELLO GNOSCA STESO! +1100 PTS!`;
 
           score += r.pts * 2;
           floatingTexts.push({ text: koMsg, x: r.x - 40, y: r.y - 25, timer: 1.4, color: '#00ff88' });
@@ -907,7 +982,7 @@ function update(dt) {
       const onSameLevel = Math.abs((hero.y + 40) - (r.y + 40)) < 35;
       if (onSameLevel) {
         r.alertTimer = (r.alertTimer || 0) + dt;
-        if (r.alertTimer > 0.4) {
+        if (r.alertTimer > 0.35) {
           speed = r.speed * 1.35;
           r.dir = (hero.x > r.x) ? 1 : -1;
         }
@@ -923,12 +998,14 @@ function update(dt) {
 
     // Collisione con eroe
     if (hero.invulnTimer <= 0) {
-      if (Math.hypot((hero.x + 20) - (r.x + 20), (hero.y + 25) - (r.y + 25)) < 26) {
+      const hitRadius = r.isChironicoGk ? 34 : 26;
+      if (Math.hypot((hero.x + 20) - (r.x + 20), (hero.y + 25) - (r.y + 25)) < hitRadius) {
         let msg = `COLPITO DAL ${r.name.toUpperCase()}!`;
         if (r.isAlex) msg = 'FALCIATO DA ALEX IL TRADITORE!';
         if (r.isPedemonte) msg = 'TRAVOLTO DAL N.11 DEL PEDEMONTE!';
         if (r.isCamorino) msg = 'ABBATTUTO DAL BOMBER DEL CAMORINO!';
         if (r.isAquila) msg = 'FALCIATO DAL TERZINO DELL\'AQUILA!';
+        if (r.isChironicoGk) msg = 'PARATA ASSASSINA DEL PORTIERE!';
         hitHero(msg);
       }
     }
@@ -974,8 +1051,22 @@ function update(dt) {
     }
 
     if (!hero.isGrounded) {
-      hero.vy += 880 * dt;
+      hero.vy += 950 * dt;
       hero.y += hero.vy * dt;
+
+      // Soffitto travi (impedisce di passare attraverso i piani dal basso saltando!)
+      if (hero.vy < 0) {
+        for (let plat of platforms) {
+          if (plat.containsX(footX)) {
+            const underY = plat.getSurfaceY(footX) + 24;
+            if (hero.y <= underY && hero.y >= underY - 22) {
+              hero.y = underY;
+              hero.vy = 40; // Testata contro la trave d'acciaio!
+              break;
+            }
+          }
+        }
+      }
     }
 
     hero.isGrounded = false;
@@ -995,7 +1086,7 @@ function update(dt) {
   // Salto sopra ciabatte (+100) e rivali
   if (!hero.isGrounded && hero.vy !== 0) {
     slippers.forEach(s => {
-      if (!s.jumped && Math.abs(footX - s.x) < 32 && (footY - s.y) >= -65 && (footY - s.y) <= -4) {
+      if (!s.jumped && Math.abs(footX - s.x) < 32 && (footY - s.y) >= -55 && (footY - s.y) <= -2) {
         s.jumped = true;
         score += 100;
         playSound('score');
@@ -1004,7 +1095,7 @@ function update(dt) {
     });
 
     rivals.forEach(r => {
-      if (!r.defeated && !r.jumped && Math.abs(footX - (r.x + 20)) < 36 && (footY - r.y) >= -75 && (footY - r.y) <= -5) {
+      if (!r.defeated && !r.jumped && Math.abs(footX - (r.x + 20)) < 36 && (footY - r.y) >= -65 && (footY - r.y) <= -5) {
         r.jumped = true;
         score += r.pts;
         playSound('score');
@@ -1015,7 +1106,7 @@ function update(dt) {
 
   hero.x = Math.max(40, Math.min(V_WIDTH - 80, hero.x));
 
-  // VITTORIA / CAMBIO LIVELLO
+  // VITTORIA / CAMBIO LIVELLO (Raggiunta la piattaforma di Renzo a sinistra!)
   if (hero.y <= platforms[0].y1 + 10 && hero.x <= 420) {
     if (currentLevel === 1) {
       gameState = STATE_LEVEL_CLEAR;
@@ -1046,7 +1137,7 @@ function hitHero(msg) {
   if (lives <= 0) {
     gameState = STATE_GAMEOVER;
   } else {
-    hero.x = 160;
+    hero.x = 100;
     hero.y = platforms[platforms.length - 1].y1 - 52;
     hero.vx = 0;
     hero.vy = 0;
