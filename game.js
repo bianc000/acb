@@ -29,6 +29,7 @@ let bonusTimer = 5000;
 let bonusCountdown = 1.0;
 let lives = 3;
 let floatingTexts = [];
+let throwWarnings = [];
 
 // WEB AUDIO SYNTH
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -81,6 +82,21 @@ function playSound(type) {
       gain.gain.linearRampToValueAtTime(0, now + 0.28);
       osc.start(now);
       osc.stop(now + 0.28);
+    } else if (type === 'whistle') {
+      // Triplice fischio arbitrale realistico!
+      const osc2 = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc2.type = 'sine';
+      osc.frequency.setValueAtTime(2800, now);
+      osc2.frequency.setValueAtTime(3150, now);
+      osc2.connect(gain);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.linearRampToValueAtTime(0.26, now + 0.14);
+      gain.gain.linearRampToValueAtTime(0.04, now + 0.22);
+      gain.gain.linearRampToValueAtTime(0.26, now + 0.34);
+      gain.gain.linearRampToValueAtTime(0, now + 0.65);
+      osc.start(now); osc2.start(now);
+      osc.stop(now + 0.65); osc2.stop(now + 0.65);
     } else if (type === 'hit') {
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(180, now);
@@ -89,6 +105,14 @@ function playSound(type) {
       gain.gain.linearRampToValueAtTime(0, now + 0.35);
       osc.start(now);
       osc.stop(now + 0.35);
+    } else if (type === 'throw') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(130, now + 0.16);
+      gain.gain.setValueAtTime(0.22, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.16);
+      osc.start(now);
+      osc.stop(now + 0.16);
     } else if (type === 'victory') {
       [523, 659, 783, 1046].forEach((freq, i) => {
         const o = audioCtx.createOscillator();
@@ -369,12 +393,34 @@ function createSlipperCanvas() {
   });
 }
 
-function createGirderCanvas() {
-  return createPixelCanvas(32, 16, (p) => {
-    p.fillStyle = '#dc2828'; p.fillRect(0, 0, 32, 16);
-    p.fillStyle = '#ff5a5a'; p.fillRect(0, 0, 32, 2);
-    p.fillStyle = '#500a0a'; p.fillRect(0, 14, 32, 2);
-    p.fillStyle = '#ffe6c8'; p.fillRect(4, 1, 2, 2); p.fillRect(20, 1, 2, 2);
+function createPitchCanvas() {
+  return createPixelCanvas(32, 18, (p) => {
+    // Erba da campo da calcio a strisce alternate
+    // Striscia 1 (verde campo intenso)
+    p.fillStyle = '#15803d';
+    p.fillRect(0, 0, 16, 18);
+    // Striscia 2 (verde campo chiaro rasato)
+    p.fillStyle = '#16a34a';
+    p.fillRect(16, 0, 16, 18);
+
+    // Linea bianca di gesso del campo (sul bordo calpestabile superiore)
+    p.fillStyle = '#ffffff';
+    p.fillRect(0, 0, 32, 3);
+
+    // Ciuffetti d'erba e texture
+    p.fillStyle = '#22c55e';
+    p.fillRect(3, 3, 2, 3);
+    p.fillRect(11, 4, 2, 2);
+    p.fillRect(19, 3, 2, 3);
+    p.fillRect(27, 4, 2, 2);
+
+    p.fillStyle = '#86efac';
+    p.fillRect(4, 2, 1, 2);
+    p.fillRect(20, 2, 1, 2);
+
+    // Terra / fondamenta sotto la zolla erbosa
+    p.fillStyle = '#0f3d1b';
+    p.fillRect(0, 15, 32, 3);
   });
 }
 
@@ -408,7 +454,8 @@ const sprites = {
   camorino: createCamorinoCanvas(),
   taira: createTairaCanvas(),
   slipper: createSlipperCanvas(),
-  girder: createGirderCanvas(),
+  pitch: createPitchCanvas(),
+  girder: createPitchCanvas(),
   ladder: createLadderCanvas()
 };
 
@@ -437,7 +484,7 @@ class Platform {
     ctx.translate(this.x1, this.y1);
     ctx.rotate(angle);
     for (let d = 0; d < len; d += 32) {
-      ctx.drawImage(sprites.girder, d, 0);
+      ctx.drawImage(sprites.pitch, d, 0);
     }
     ctx.restore();
   }
@@ -494,7 +541,7 @@ function buildLevelGeometry(level) {
   const slope = (level === 2) ? 46 : 38;
 
   platforms.push(
-    new Platform(80, 100, 440, 100),                          // [0] Cima Renzo
+    new Platform(50, 100, 480, 100),                          // [0] Cima Renzo & Porta da Calcio
     new Platform(140, 175, 1160, 175 + slope),                // [1] Girder 5
     new Platform(120, 325, 1160, 325 - slope),                // [2] Girder 4
     new Platform(120, 390, 1160, 390 + slope),                // [3] Girder 3
@@ -569,11 +616,21 @@ let hero = {
 };
 
 let renzo = {
-  x: 120,
+  x: 230,
   y: 14,
   isThrowing: false,
-  throwTimer: 2.1,
-  animTimer: 0
+  throwTimer: 2.0,
+  animTimer: 0,
+  tacticTimer: 0,
+  quote: '',
+  quoteTimer: 0
+};
+
+let goalState = {
+  scored: false,
+  animTimer: 0,
+  bulge: 0,
+  netParticles: []
 };
 
 let kickedBalls = [];
@@ -720,6 +777,7 @@ function startLevel(lvl) {
   slippers = [];
   kickedBalls = [];
   floatingTexts = [];
+  throwWarnings = [];
 
   // Spawna a sinistra sulla Terra: DEVE attraversare verso destra per salire!
   hero.x = 100;
@@ -732,10 +790,19 @@ function startLevel(lvl) {
   hero.hasBall = true;
   hero.ballCooldown = 0;
 
-  renzo.x = 120;
+  renzo.x = 280;
   renzo.y = platforms[0].y1 - 86;
-  renzo.throwTimer = 2.0;
+  renzo.throwTimer = 1.8;
   renzo.isThrowing = false;
+  renzo.quote = "";
+  renzo.quoteTimer = 0;
+
+  goalState = {
+    scored: false,
+    animTimer: 0,
+    bulge: 0,
+    netParticles: []
+  };
 
   setupRivalsForLevel(lvl);
 }
@@ -745,14 +812,27 @@ function shootBall() {
   hero.ballCooldown = 1.6;
   playSound('kick');
 
-  const shootDir = hero.facingRight ? 1 : -1;
+  let shootDir = hero.facingRight ? 1 : -1;
+  let shootVx = shootDir * 600;
+  let shootVy = -120;
+
+  if (hero.y < 120) {
+    hero.facingRight = false; // sulla cima mira verso la porta a sinistra
+    shootVx = -650;
+    shootVy = -50;
+  }
+
+  // Spawna il pallone davanti al piede dell'eroe a seconda della direzione
+  const spawnX = hero.facingRight ? (hero.x + 48) : (hero.x - 14);
+
   kickedBalls.push({
-    x: hero.x + (hero.facingRight ? 40 : -10),
-    y: hero.y + 30,
-    vx: shootDir * 600,
-    vy: -120,
+    x: spawnX,
+    y: hero.y + 26,
+    vx: shootVx,
+    vy: shootVy,
     rot: 0,
-    active: true
+    active: true,
+    pickupTimer: 0.8 // Previene il riassorbimento immediato!
   });
 }
 
@@ -791,32 +871,342 @@ function update(dt) {
     }
   }
 
-  // Renzo ciabatte
-  renzo.throwTimer -= dt;
-  if (renzo.throwTimer <= 0.6 && !renzo.isThrowing) {
-    renzo.isThrowing = true;
-    renzo.animTimer = 0.6;
+  // -----------------------------------------------------------------------
+  // RENZO AI TATTICA E INTELLIGENTE (Lanci Mirati & Difesa della Porta)
+  // -----------------------------------------------------------------------
+  renzo.tacticTimer = (renzo.tacticTimer || 0) + dt;
+  if (renzo.quoteTimer > 0) renzo.quoteTimer -= dt;
+
+  // Rileva a quale piano si trova il giocatore
+  let heroFloor = 0;
+  if (hero.y < 120) heroFloor = 6;      // Cima / Dischetto di rigore e Porta
+  else if (hero.y < 240) heroFloor = 5; // Tier 5 (ultimo piano sotto Renzo)
+  else if (hero.y < 350) heroFloor = 4; // Tier 4
+  else if (hero.y < 460) heroFloor = 3; // Tier 3
+  else if (hero.y < 560) heroFloor = 2; // Tier 2
+  else if (hero.y < 650) heroFloor = 1; // Tier 1
+  else heroFloor = 0;                   // Terra
+
+  // PATTUGLIAMENTO TATTICO DI RENZO SULLA LINEA TECNICA (x: 220 - 410)
+  // Renzo cammina e segue l'avanzata del giocatore per chiudergli gli spazi!
+  let targetRenzoX = 280;
+  if (heroFloor === 6) {
+    // Davanti alla porta: Renzo fa da baluardo tra il dischetto (x=280) e la porta
+    targetRenzoX = Math.max(210, Math.min(360, hero.x + (hero.facingRight ? 45 : -45)));
+  } else if (heroFloor === 5) {
+    // Tier 5: Renzo va a coprire la scala di accesso a x=380 e blocca l'attacco
+    targetRenzoX = Math.max(240, Math.min(410, hero.x - 20));
+  } else {
+    // Piani inferiori: Renzo passeggia lungo la trave seguendo l'asse dell'eroe
+    const normX = Math.max(0, Math.min(1, hero.x / V_WIDTH));
+    targetRenzoX = 230 + normX * 180;
   }
-  if (renzo.isThrowing) {
+  renzo.x += (targetRenzoX - renzo.x) * 2.4 * dt;
+
+  renzo.throwTimer -= dt;
+
+  // Reazioni vocali di Mister Renzo alla posizione del giocatore
+  if (heroFloor === 6 && !goalState.scored) {
+    if (renzo.quoteTimer <= 0) {
+      const goalQuotes = [
+        "NO! NON TIRARE IN PORTA!",
+        "PARALA QUALCUNO!",
+        "RIGORE INESISTENTE!",
+        "CHIUDI LO SPECCHIO!"
+      ];
+      renzo.quote = goalQuotes[Math.floor(Math.random() * goalQuotes.length)];
+      renzo.quoteTimer = 2.0;
+    }
+  } else if (heroFloor === 5 && !goalState.scored) {
+    if (renzo.quoteTimer <= 0) {
+      const catenaccioQuotes = [
+        "DIFESA A CATENACCIO!",
+        "DI QUI NON SI PASSA!",
+        "CHIUDETE LA PORTA!",
+        "NON TI FACCIO TIRARE!",
+        "MURO DIFENSIVO!"
+      ];
+      renzo.quote = catenaccioQuotes[Math.floor(Math.random() * catenaccioQuotes.length)];
+      renzo.quoteTimer = 1.8;
+    }
+  } else if (hero.isClimbing && renzo.quoteTimer <= 0) {
+    const ladderQuotes = [
+      "GIÙ DA QUELLA SCALA!",
+      "TI HO PRESO SUI GRADINI!",
+      "FALLO TATTICO! SCENDI!",
+      "ATTENTO ALLA TESTA!"
+    ];
+    renzo.quote = ladderQuotes[Math.floor(Math.random() * ladderQuotes.length)];
+    renzo.quoteTimer = 1.6;
+  }
+
+  // Preavviso di lancio (Renzo carica il braccio con la ciabatta!)
+  if (renzo.throwTimer <= 0.45 && !renzo.isThrowing && !goalState.scored && heroFloor < 6) {
+    renzo.isThrowing = true;
+    renzo.animTimer = 0.45;
+  }
+
+  if (renzo.isThrowing && !goalState.scored && heroFloor < 6) {
     renzo.animTimer -= dt;
     if (renzo.animTimer <= 0) {
       renzo.isThrowing = false;
-      renzo.throwTimer = (currentLevel === 2) ? 1.4 : 2.1;
-      const isBouncer = (currentLevel === 2 && Math.random() < 0.35);
-      slippers.push({
-        x: renzo.x + 80,
-        y: renzo.y + 60,
-        vx: 200,
-        vy: 0,
-        isFalling: true,
-        rot: 0,
-        dir: 1,
-        active: true,
-        jumped: false,
-        isBouncer: isBouncer,
-        bouncesLeft: isBouncer ? 6 : 0,
-        droppedDownLadder: false
-      });
+      playSound('throw');
+
+      const renzoHandX = renzo.x + 43;
+      const renzoHandY = renzo.y + 25;
+
+      // Direzione input dell'eroe per anticipo tiro
+      let inputDir = 0;
+      if (keys['ArrowLeft'] || keys['KeyA']) inputDir -= 1;
+      if (keys['ArrowRight'] || keys['KeyD']) inputDir += 1;
+
+      // -------------------------------------------------------------------
+      // STRATEGIA 1: PUNIZIONE SCALA (Se l'eroe sta salendo una scala)
+      // -------------------------------------------------------------------
+      const climbingLadder = hero.isClimbing ? ladders.find(l => Math.abs((hero.x + 24) - l.x) < 30) : null;
+
+      if (climbingLadder) {
+        renzo.throwTimer = (currentLevel === 2) ? 1.2 : 1.5;
+        renzo.quote = "GIÙ DA QUELLA SCALA!";
+        renzo.quoteTimer = 1.6;
+
+        if (climbingLadder.x === 380) {
+          // Scala finale per la porta: Renzo scarica la ciabatta direttamente nel vano della scala!
+          slippers.push({
+            x: 380,
+            y: 105,
+            vx: 0,
+            vy: 330,
+            isFalling: true,
+            rot: 0,
+            dir: 1,
+            active: true,
+            jumped: false,
+            isLob: false,
+            minLandingY: 0,
+            isBouncer: false,
+            bouncesLeft: 0,
+            droppedDownLadder: true
+          });
+        } else {
+          // Altra scala: Tiro a parabola calibrato sul punto in cui si trova l'eroe sulla scala!
+          const flightTime = 0.85;
+          const targetX = climbingLadder.x;
+          const targetY = hero.y + 20;
+
+          throwWarnings.push({
+            x: targetX,
+            y: targetY,
+            timer: flightTime,
+            maxTimer: flightTime,
+            label: '⚠️ SCALA SOTTO TIRO!'
+          });
+
+          const g = 750;
+          const dx = targetX - renzoHandX;
+          const dy = targetY - renzoHandY;
+          const vx = dx / flightTime;
+          const vy = (dy - 0.5 * g * flightTime * flightTime) / flightTime;
+
+          slippers.push({
+            x: renzoHandX,
+            y: renzoHandY,
+            vx: vx,
+            vy: vy,
+            isFalling: true,
+            rot: 0,
+            dir: (vx >= 0 ? 1 : -1),
+            active: true,
+            jumped: false,
+            isLob: true,
+            minLandingY: targetY - 28,
+            isBouncer: false,
+            bouncesLeft: 0,
+            droppedDownLadder: false
+          });
+        }
+      }
+      // -------------------------------------------------------------------
+      // STRATEGIA 2: ULTIMO PIANO - DIFESA DELLA PORTA A CATENACCIO (Tier 5)
+      // -------------------------------------------------------------------
+      else if (heroFloor === 5) {
+        renzo.throwTimer = (currentLevel === 2) ? 0.95 : 1.15; // Ritmo incalzante!
+
+        const plat5 = platforms[1];
+        const dirToHero = (hero.x > renzoHandX) ? 1 : -1;
+        const isMissile = Math.random() < 0.55;
+
+        if (isMissile) {
+          // Siluro rasoterra velocissimo che spazza la trave verso l'eroe
+          renzo.quote = "SILURO RASOTERRA!";
+          renzo.quoteTimer = 1.3;
+          const speed = (currentLevel === 2) ? 340 : 300;
+
+          const startX = Math.max(plat5.x1 + 30, Math.min(plat5.x2 - 30, renzoHandX));
+          const startY = plat5.getSurfaceY(startX) - 14;
+
+          slippers.push({
+            x: startX,
+            y: startY,
+            vx: dirToHero * speed,
+            vy: 0,
+            isFalling: false,
+            rot: 0,
+            dir: dirToHero,
+            active: true,
+            jumped: false,
+            isLob: false,
+            minLandingY: 0,
+            isBouncer: false,
+            bouncesLeft: 0,
+            droppedDownLadder: false
+          });
+        } else {
+          // Pallonetto rimbalzante ad alto impatto
+          renzo.quote = "PALLONETTO A EFFETTO!";
+          renzo.quoteTimer = 1.3;
+
+          const startX = Math.max(plat5.x1 + 30, Math.min(plat5.x2 - 30, renzoHandX));
+          const startY = plat5.getSurfaceY(startX) - 14;
+
+          slippers.push({
+            x: startX,
+            y: startY,
+            vx: dirToHero * 220,
+            vy: -220,
+            isFalling: true,
+            rot: 0,
+            dir: dirToHero,
+            active: true,
+            jumped: false,
+            isLob: false,
+            minLandingY: 0,
+            isBouncer: true,
+            bouncesLeft: 5,
+            droppedDownLadder: false
+          });
+        }
+
+        // Raffica aggiuntiva per il livello 2
+        if ((currentLevel === 2 || Math.random() < 0.35) && !goalState.scored) {
+          setTimeout(() => {
+            if (gameState === STATE_PLAYING && !goalState.scored && hero.y > 120) {
+              const startX2 = Math.max(plat5.x1 + 30, Math.min(plat5.x2 - 30, renzo.x + 43));
+              const startY2 = plat5.getSurfaceY(startX2) - 14;
+              slippers.push({
+                x: startX2,
+                y: startY2,
+                vx: dirToHero * 270,
+                vy: 0,
+                isFalling: false,
+                rot: 0,
+                dir: dirToHero,
+                active: true,
+                jumped: false,
+                isLob: false,
+                minLandingY: 0,
+                isBouncer: false,
+                bouncesLeft: 0,
+                droppedDownLadder: false
+              });
+              renzo.quote = "DOPPIO CATENACCIO!";
+              renzo.quoteTimer = 1.4;
+            }
+          }, 360);
+        }
+      }
+      // -------------------------------------------------------------------
+      // STRATEGIA 3: PIANI INFERIORI (Tier 0 - Tier 4)
+      // 68% Lancio Mirato Ballistico a Parabola / 32% Rotolamento Guidato
+      // -------------------------------------------------------------------
+      else {
+        const doTargetedLob = Math.random() < 0.68;
+
+        if (doTargetedLob) {
+          // TIRO A PARABOLA MIRATO CON RETICOLO DI ALLERTA
+          renzo.throwTimer = (currentLevel === 2) ? 1.35 : 1.7;
+
+          const lobQuotes = [
+            "PRENDI QUESTO LOB!",
+            "MARCATURA A UOMO!",
+            "TI HO VISTO SULLA FASCIA!",
+            "DIAGONALE DIFENSIVA!",
+            "TI BEVIMENTO QUESTA!"
+          ];
+          renzo.quote = lobQuotes[Math.floor(Math.random() * lobQuotes.length)];
+          renzo.quoteTimer = 1.6;
+
+          // Tempo di volo calibrato in base all'altezza dell'eroe
+          const flightTime = (currentLevel === 2) ? 0.95 : 1.15;
+          const leadDist = inputDir * hero.speed * 0.35;
+          const targetX = Math.max(120, Math.min(1160, hero.x + 20 + leadDist));
+          const targetY = hero.y + 36;
+
+          // Mostra il mirino d'avviso rosso al suolo
+          throwWarnings.push({
+            x: targetX,
+            y: targetY,
+            timer: flightTime,
+            maxTimer: flightTime,
+            label: '⚠️ ATTENTO!'
+          });
+
+          // Calcolo traiettoria balistica esatta
+          const g = 750;
+          const dx = targetX - renzoHandX;
+          const dy = targetY - renzoHandY;
+          const vx = dx / flightTime;
+          const vy = (dy - 0.5 * g * flightTime * flightTime) / flightTime;
+
+          slippers.push({
+            x: renzoHandX,
+            y: renzoHandY,
+            vx: vx,
+            vy: vy,
+            isFalling: true,
+            rot: 0,
+            dir: (vx >= 0 ? 1 : -1),
+            active: true,
+            jumped: false,
+            isLob: true,
+            minLandingY: targetY - 32, // Non impatta su travi intermedie durante l'arco!
+            isBouncer: (currentLevel === 2 && Math.random() < 0.4),
+            bouncesLeft: 1,
+            droppedDownLadder: false
+          });
+        } else {
+          // LANCIO CLASSICO A ROTOLAMENTO GUIDATO
+          renzo.throwTimer = (currentLevel === 2) ? 1.5 : 1.9;
+          renzo.quote = "ROTOLA IN AREA!";
+          renzo.quoteTimer = 1.4;
+
+          const slipperSpeed = (currentLevel === 2) ? 240 : 200;
+          slippers.push({
+            x: renzoHandX,
+            y: renzoHandY,
+            vx: slipperSpeed,
+            vy: 0,
+            isFalling: true,
+            rot: 0,
+            dir: 1,
+            active: true,
+            jumped: false,
+            isLob: false,
+            minLandingY: 0,
+            isBouncer: (currentLevel === 2 && Math.random() < 0.3),
+            bouncesLeft: 4,
+            droppedDownLadder: false
+          });
+        }
+      }
+    }
+  }
+
+  // Aggiorna mirini di allerta per tiri a parabola
+  for (let i = throwWarnings.length - 1; i >= 0; i--) {
+    throwWarnings[i].timer -= dt;
+    if (throwWarnings[i].timer <= 0) {
+      throwWarnings.splice(i, 1);
     }
   }
 
@@ -825,18 +1215,18 @@ function update(dt) {
     const s = slippers[i];
     s.rot += s.dir * 14 * dt;
 
-    // Discesa ciabatta dalle scale (stile Donkey Kong classico!)
+    // Discesa ciabatta dalle scale (stile Donkey Kong con intelligenza artificiale)
     if (!s.isFalling && !s.droppedDownLadder) {
       for (let l of ladders) {
-        if (!l.isBroken && Math.abs(s.x - l.x) < 16 && Math.abs(s.y - (l.topY - 14)) < 20) {
-          const heroNearOrUnder = (Math.abs(hero.x - l.x) < 80 && hero.y > s.y);
-          const dropChance = (currentLevel === 2) ? 0.45 : 0.25;
-          if (heroNearOrUnder || Math.random() < dropChance) {
+        if (!l.isBroken && Math.abs(s.x - l.x) < 18 && Math.abs(s.y - (l.topY - 14)) < 22) {
+          const heroBeneath = (Math.abs(hero.x - l.x) < 140 && hero.y > s.y);
+          const dropChance = heroBeneath ? 0.75 : ((currentLevel === 2) ? 0.35 : 0.2);
+          if (Math.random() < dropChance) {
             s.isFalling = true;
             s.droppedDownLadder = true;
             s.x = l.x;
             s.vx = 0;
-            s.vy = 260; // Piomba giù verticalmente per la scala!
+            s.vy = 280; // Piomba giù verticalmente per la scala!
             break;
           }
         }
@@ -851,7 +1241,13 @@ function update(dt) {
       for (let plat of platforms) {
         if (plat.containsX(s.x)) {
           const surfY = plat.getSurfaceY(s.x) - 14;
-          if (s.y >= surfY - 8 && s.y <= surfY + 20 && s.vy >= 0) {
+
+          // Se è un tiro mirato a parabola, non fermarsi su travi sopra il bersaglio!
+          if (s.minLandingY && s.y < s.minLandingY) {
+            continue;
+          }
+
+          if (s.y >= surfY - 10 && s.y <= surfY + 24 && s.vy >= 0) {
             if (s.isBouncer && s.bouncesLeft > 0) {
               s.vy = -220; // Rimbalzo elastico in aria!
               s.bouncesLeft--;
@@ -859,9 +1255,18 @@ function update(dt) {
             } else {
               s.y = surfY;
               s.isFalling = false;
-              s.dir = (plat.y2 - plat.y1 > 0) ? 1 : ((plat.y2 - plat.y1 < 0) ? -1 : -1);
-              s.vx = s.dir * (currentLevel === 2 ? 230 : 190);
+              s.isLob = false;
+              s.minLandingY = 0;
               s.droppedDownLadder = false;
+
+              // Se atterra vicino alla quota dell'eroe, rotola direttamente verso di lui!
+              const onHeroLevel = Math.abs((hero.y + 40) - surfY) < 55;
+              if (onHeroLevel) {
+                s.dir = (hero.x < s.x) ? -1 : 1;
+              } else {
+                s.dir = (plat.y2 - plat.y1 > 0) ? 1 : ((plat.y2 - plat.y1 < 0) ? -1 : -1);
+              }
+              s.vx = s.dir * (currentLevel === 2 ? 230 : 190);
             }
             break;
           }
@@ -898,10 +1303,19 @@ function update(dt) {
   // Aggiorna palloni calciati
   for (let i = kickedBalls.length - 1; i >= 0; i--) {
     const b = kickedBalls[i];
+    if (b.pickupTimer > 0) b.pickupTimer -= dt;
+
     b.x += b.vx * dt;
     b.vy += 450 * dt;
     b.y += b.vy * dt;
     b.rot += (b.vx > 0 ? 15 : -15) * dt;
+
+    // RILEVAMENTO GOL NELLA PORTA (x: 60 a 195, y: 15 a 105)
+    if (b.active && !goalState.scored) {
+      if (b.x >= 60 && b.x <= 195 && b.y >= 15 && b.y <= 105) {
+        triggerGoal(b);
+      }
+    }
 
     for (let plat of platforms) {
       if (plat.containsX(b.x)) {
@@ -951,8 +1365,8 @@ function update(dt) {
       }
     }
 
-    // Recupero palla a terra
-    if (!hero.hasBall && Math.hypot((hero.x + 20) - b.x, (hero.y + 25) - b.y) < 32) {
+    // Recupero palla a terra (SOLO se pickupTimer è scaduto: impedisce auto-distruzione del tiro!)
+    if (!hero.hasBall && b.pickupTimer <= 0 && Math.hypot((hero.x + 20) - b.x, (hero.y + 25) - b.y) < 32) {
       hero.hasBall = true;
       b.active = false;
       floatingTexts.push({ text: '⚽ PALLA RECUPERATA!', x: hero.x - 20, y: hero.y - 20, timer: 0.7, color: '#66ff88' });
@@ -1106,17 +1520,41 @@ function update(dt) {
 
   hero.x = Math.max(40, Math.min(V_WIDTH - 80, hero.x));
 
-  // VITTORIA / CAMBIO LIVELLO (Raggiunta la piattaforma di Renzo a sinistra!)
-  if (hero.y <= platforms[0].y1 + 10 && hero.x <= 420) {
-    if (currentLevel === 1) {
-      gameState = STATE_LEVEL_CLEAR;
-      score += bonusTimer;
-      playSound('victory');
-    } else {
-      gameState = STATE_VICTORY;
-      score += bonusTimer;
-      if (score > highScore) highScore = score;
-      playSound('victory');
+  // SULLA CIMA: Se l'eroe non ha la palla, forniscila subito per tirare in porta!
+  if (hero.y <= platforms[0].y1 + 10 && !goalState.scored) {
+    if (!hero.hasBall) {
+      hero.hasBall = true;
+      hero.ballCooldown = 0;
+      floatingTexts.push({ text: '⚽ PALLA PRONTA! TIRA IN PORTA!', x: 220, y: 65, timer: 1.5, color: '#ffff00' });
+    }
+  }
+
+  // Dribbling fin dentro la porta con palla al piede
+  if (!goalState.scored && hero.hasBall && hero.y <= 105 && hero.x <= 185) {
+    triggerGoal(null);
+  }
+
+  // Animazione gol ed esultanza prima del cambio livello
+  if (goalState.scored) {
+    goalState.animTimer -= dt;
+    goalState.bulge = Math.max(0, goalState.bulge - 6 * dt);
+
+    for (let p of goalState.netParticles) {
+      p.x += p.vx * dt;
+      p.vy += 420 * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+    }
+
+    if (goalState.animTimer <= 0) {
+      if (currentLevel === 1) {
+        gameState = STATE_LEVEL_CLEAR;
+        score += bonusTimer;
+      } else {
+        gameState = STATE_VICTORY;
+        score += bonusTimer;
+        if (score > highScore) highScore = score;
+      }
     }
   }
 
@@ -1129,10 +1567,46 @@ function update(dt) {
   }
 }
 
+function triggerGoal(ball) {
+  if (goalState.scored) return;
+  goalState.scored = true;
+  goalState.animTimer = 2.6;
+  goalState.bulge = 18;
+
+  if (ball) {
+    ball.active = false;
+  }
+  hero.hasBall = false;
+
+  playSound('whistle');
+  playSound('victory');
+  score += 3000;
+
+  // Esplosione coriandoli / particelle rete
+  goalState.netParticles = [];
+  for (let p = 0; p < 35; p++) {
+    goalState.netParticles.push({
+      x: 120 + (Math.random() - 0.5) * 60,
+      y: 55 + (Math.random() - 0.5) * 40,
+      vx: (Math.random() - 0.5) * 260,
+      vy: -160 - Math.random() * 220,
+      color: Math.random() > 0.5 ? '#ffff00' : (Math.random() > 0.5 ? '#22c55e' : '#ffffff'),
+      size: 4 + Math.random() * 5,
+      life: 2.5
+    });
+  }
+
+  floatingTexts.push({ text: '⚽ GOOOOOOOOOOOOOOOOOOL!', x: 80, y: 35, timer: 2.5, color: '#ffff00' });
+  floatingTexts.push({ text: 'RETE! PROMOZIONE CONQUISTATA! +3000 PTS!', x: 50, y: 10, timer: 2.5, color: '#00ff88' });
+  renzo.quote = "GOL CAPOLAVORO! SEI IN QUARTA LEGA!";
+  renzo.quoteTimer = 3.0;
+}
+
 function hitHero(msg) {
   lives--;
   playSound('hit');
   floatingTexts.push({ text: msg, x: hero.x - 30, y: hero.y - 20, timer: 1.3, color: '#ff3333' });
+  throwWarnings = [];
 
   if (lives <= 0) {
     gameState = STATE_GAMEOVER;
@@ -1148,6 +1622,107 @@ function hitHero(msg) {
 }
 
 // -------------------------------------------------------------------------
+// PORTA DA CALCIO SULLA CIMA
+// -------------------------------------------------------------------------
+
+function drawSoccerGoal(ctx, x, y, w, h, isScored, bulge) {
+  ctx.save();
+
+  // Sfondo scuro e maglie rete della porta
+  ctx.fillStyle = 'rgba(0, 20, 10, 0.45)';
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - 22 - bulge, y + 10);
+  ctx.lineTo(x - 22 - bulge, y + h);
+  ctx.lineTo(x, y + h);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(0, 30, 15, 0.3)';
+  ctx.fillRect(x, y, w, h);
+
+  // Maglie della rete bianca a rombi
+  ctx.strokeStyle = isScored ? 'rgba(255, 255, 100, 0.85)' : 'rgba(255, 255, 255, 0.55)';
+  ctx.lineWidth = 1.5;
+  const step = 10;
+  for (let gx = x - 20; gx < x + w; gx += step) {
+    ctx.beginPath();
+    ctx.moveTo(gx, y);
+    ctx.lineTo(gx + 12 + (isScored ? Math.sin(performance.now() * 0.03 + gx) * 5 : 0), y + h);
+    ctx.stroke();
+  }
+  for (let gy = y; gy < y + h; gy += step) {
+    ctx.beginPath();
+    ctx.moveTo(x - 20, gy);
+    ctx.lineTo(x + w, gy + (isScored ? Math.cos(performance.now() * 0.03 + gy) * 4 : 0));
+    ctx.stroke();
+  }
+
+  // Pali e traversa bianchi spessi
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+
+  // Traversa
+  ctx.beginPath();
+  ctx.moveTo(x - 3, y);
+  ctx.lineTo(x + w + 3, y);
+  ctx.stroke();
+
+  // Palo sinistro
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x, y + h);
+  ctx.stroke();
+
+  // Palo destro
+  ctx.beginPath();
+  ctx.moveTo(x + w, y);
+  ctx.lineTo(x + w, y + h);
+  ctx.stroke();
+
+  // Supporti posteriori metallici
+  ctx.strokeStyle = '#64748b';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - 22, y + 10);
+  ctx.lineTo(x - 22, y + h);
+  ctx.stroke();
+
+  // Linea di porta bianca sul prato
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x + w, y + h);
+  ctx.stroke();
+
+  // Area di rigore bianca
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y + h - 3, 190, 3);
+
+  // Dischetto del rigore
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x + 200, y + h - 2, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Target visivo quando l'eroe è sulla cima
+  if (!isScored && hero.y < 130) {
+    const pulse = Math.abs(Math.sin(performance.now() * 0.008));
+    ctx.fillStyle = '#ffff00';
+    ctx.font = 'bold 15px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('⚽ TIRA IN PORTA!', x + w / 2, y - 18 - pulse * 6);
+    ctx.fillText('▼', x + w / 2, y - 4 - pulse * 4);
+    ctx.textAlign = 'left';
+  }
+
+  ctx.restore();
+}
+
+// -------------------------------------------------------------------------
 // RENDERING
 // -------------------------------------------------------------------------
 
@@ -1160,13 +1735,70 @@ function render() {
     return;
   }
 
-  // Piattaforme e scale
+  // Piattaforme e scale verdi da campo da calcio
   platforms.forEach(p => p.draw(ctx));
   ladders.forEach(l => l.draw(ctx));
 
-  // Renzo
+  // Porta da calcio in cima
+  drawSoccerGoal(ctx, 70, 25, 120, 75, goalState.scored, goalState.bulge);
+
+  // Coriandoli ed effetti del gol
+  if (goalState.netParticles && goalState.netParticles.length > 0) {
+    goalState.netParticles.forEach(p => {
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    });
+  }
+
+  // Mirini di allerta per lanci mirati a parabola di Mister Renzo
+  throwWarnings.forEach(w => {
+    const progress = Math.max(0, w.timer / w.maxTimer);
+    const pulse = 1 + 0.25 * Math.sin((1 - progress) * 16);
+    const radius = 20 * pulse;
+
+    ctx.save();
+    ctx.strokeStyle = '#ff2222';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(w.x - radius - 6, w.y);
+    ctx.lineTo(w.x + radius + 6, w.y);
+    ctx.moveTo(w.x, w.y - radius - 6);
+    ctx.lineTo(w.x, w.y + radius + 6);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffff00';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(w.label, w.x, w.y - radius - 6);
+    ctx.restore();
+  });
+
+  // Renzo (con specchio orizzontale per guardare sempre verso l'eroe)
   const renzoSprite = renzo.isThrowing ? sprites.renzoThrow : sprites.renzoNormal;
-  ctx.drawImage(renzoSprite, renzo.x, renzo.y, 86, 86);
+  const renzoCenterX = renzo.x + 43;
+  const renzoCenterY = renzo.y + 43;
+  const renzoFacesRight = (hero.x >= renzoCenterX);
+
+  ctx.save();
+  if (!renzoFacesRight) {
+    ctx.translate(renzoCenterX, renzoCenterY);
+    ctx.scale(-1, 1);
+    ctx.drawImage(renzoSprite, -43, -43, 86, 86);
+  } else {
+    ctx.drawImage(renzoSprite, renzo.x, renzo.y, 86, 86);
+  }
+  ctx.restore();
+
+  // Fumetto tattico di Mister Renzo!
+  if (renzo.quote && renzo.quoteTimer > 0) {
+    drawSpeechBubble(renzoCenterX, renzo.y - 18, renzo.quote);
+  }
 
   // Rivali (FIX: Disegno sprite isolato per evitare che il testo finisca a sinistra!)
   rivals.forEach(r => {
@@ -1383,49 +2015,49 @@ function drawCharacterSelect() {
 }
 
 function drawBriefing() {
-  drawBox(120, 160, 1040, 390, 'rgba(15, 20, 35, 0.96)', '#f5c828');
-  ctx.drawImage(sprites.taira, 150, 200, 100, 100);
+  drawBox(120, 150, 1040, 410, 'rgba(15, 20, 35, 0.96)', '#f5c828');
+  ctx.drawImage(sprites.taira, 150, 190, 100, 100);
 
   ctx.fillStyle = '#ffd700'; ctx.font = 'bold 26px Courier New';
-  ctx.fillText(`ORDINE DEL COMANDANTE TAIRA A SOLDATO ${hero.name}!`, 280, 210);
+  ctx.fillText(`ORDINE DEL COMANDANTE TAIRA A SOLDATO ${hero.name}!`, 280, 200);
 
   ctx.fillStyle = '#ffffff'; ctx.font = '18px Courier New';
-  ctx.fillText(`'${hero.name}! LA MISSIONE E VINCERE LA QUINTA LEGA E RICONQUISTARE LA QUARTA!`, 280, 255);
+  ctx.fillText(`'${hero.name}! LA MISSIONE E VINCERE LA QUINTA LEGA E RICONQUISTARE LA QUARTA!`, 280, 240);
 
   ctx.fillStyle = '#66ff88';
-  ctx.fillText('PORTA IL PALLONE TRA I PIEDI: SE TROVI NEMICI SULLE TRAVI, CALCIA FORTE PER STENDERLI!', 280, 290);
+  ctx.fillText('LE TRAVI ORA SONO IN ERBA COME IL CAMPO: PORTA IL PALLONE E STENDI I RIVALI!', 280, 275);
 
   ctx.fillStyle = '#ffffff';
-  ctx.fillText('ATTENTO AL CODEBORGO, AGLI ARAMAICI E AL NUMERO 11 DEL PEDEMONTE (MOLTO ARRABBIATO!).', 280, 325);
+  ctx.fillText('ATTENTO AGLI SCHEMI DI RENZO: LANCI MIRATI, DOPPIETTE E DIFESA FEROCE SUL FINALE.', 280, 310);
 
   ctx.fillStyle = '#50c8ff';
-  ctx.fillText('SULLA TRAVE PIU ALTA C\'E ALEX IL TRADITORE: COLPISCILO IN PIENO CON IL PALLONE!', 280, 365);
-  ctx.fillText('SCHIVA LE CIABATTE DI RENZO, SFONDA LE LINEE E CONQUISTA LA FIDUCIA DEL MISTER!\'', 280, 400);
+  ctx.fillText('SULLA CIMA C\'E LA PORTA DA CALCIO: ARRIVA SUL DISCHETTO E CALCIA IN RETE!', 280, 345);
+  ctx.fillText('SOLO SEGNANDO IL GOL CONQUISTERAI LA VITTORIA E LA FIDUCIA DEL MISTER!\'', 280, 380);
 
   ctx.fillStyle = '#22c55e'; ctx.font = 'bold 22px Courier New';
-  ctx.fillText('TOCCA IL PULSANTE VERDE/ROSSO O PREMI [SPAZIO] PER INIZIARE LA PARTITA', 200, 490);
+  ctx.fillText('TOCCA IL PULSANTE VERDE/ROSSO O PREMI [SPAZIO] PER INIZIARE LA PARTITA', 200, 500);
 }
 
 function drawLevelClear() {
-  drawBox(140, 180, 1000, 360, 'rgba(10, 30, 45, 0.96)', '#00f0ff');
-  ctx.drawImage(sprites.taira, 170, 220, 100, 100);
+  drawBox(140, 170, 1000, 380, 'rgba(10, 30, 45, 0.96)', '#00f0ff');
+  ctx.drawImage(sprites.taira, 170, 210, 100, 100);
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 30px Courier New';
-  ctx.fillText('LIVELLO 1 SUPERATO! BRAVO ' + hero.name + '!', 290, 230);
+  ctx.fillText('GOOOOOOOL! LIVELLO 1 CONQUISTATO! BRAVO ' + hero.name + '!', 290, 220);
 
   ctx.fillStyle = '#ffffff'; ctx.font = '19px Courier New';
-  ctx.fillText('COMANDANTE TAIRA: \'OTTIMO LAVORO, MA NON E FINITA QUI!', 290, 280);
-  ctx.fillText('ORA ENTRIAMO NEL VERO INFERNO DELLA QUINTA LEGA: IL LIVELLO 2!', 290, 315);
+  ctx.fillText('COMANDANTE TAIRA: \'CHE GOL! MA IL LIVELLO 2 E IL VERO INFERNO!', 290, 270);
+  ctx.fillText('ORA RENZO METTE IL CATENACCIO TOTALE SULL\'ULTIMA TRAVE PRIMA DELLA PORTA!', 290, 305);
 
   ctx.fillStyle = '#ffcc00';
-  ctx.fillText('CI SONO PIU PIANI E AVVERSARI PIU TOSTI:', 290, 360);
+  ctx.fillText('PIU CIABATTE RIMBALZANTI E AVVERSARI DECISIVI:', 290, 345);
   ctx.fillStyle = '#ffffff';
-  ctx.fillText('- IL TERZINO DELL\'AQUILA CHE URLA "LANCIAMI!"', 300, 395);
-  ctx.fillText('- IL CAPITANO DELLO GNOSCA E IL PORTIERE DEL CHIRONICO', 300, 425);
-  ctx.fillText('- E ALL\'ULTIMO PIANO L\'ATTACCANTE DEL CAMORINO!\'', 300, 455);
+  ctx.fillText('- IL TERZINO DELL\'AQUILA ("LANCIAMI!"), LO GNOSCA E IL PORTIERE DEL CHIRONICO', 300, 380);
+  ctx.fillText('- SULL\'ULTIMA TRAVE: L\'ATTACCANTE DEL CAMORINO IN SCATTO FURIOSO!', 300, 410);
+  ctx.fillText('- SFONDA LA LINEA E SEGNA IL GOL DEFINITIVO PER LA QUARTA LEGA!\'', 300, 440);
 
   ctx.fillStyle = '#22c55e'; ctx.font = 'bold 22px Courier New';
-  ctx.fillText('TOCCA IL PULSANTE ROSSO O PREMI [SPAZIO] PER ENTRARE NEL LIVELLO 2', 200, 505);
+  ctx.fillText('TOCCA IL PULSANTE ROSSO O PREMI [SPAZIO] PER ENTRARE NEL LIVELLO 2', 200, 515);
 }
 
 function drawVictory() {
