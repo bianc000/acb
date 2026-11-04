@@ -527,6 +527,21 @@ function createRenzoImages() {
   return images;
 }
 
+function createCharacterImages() {
+  const images = {};
+  if (typeof CHARACTER_SPRITES !== 'undefined') {
+    for (const [charKey, poses] of Object.entries(CHARACTER_SPRITES)) {
+      images[charKey] = {};
+      for (const [poseKey, val] of Object.entries(poses)) {
+        const img = new Image();
+        img.src = val.src;
+        images[charKey][poseKey] = { img, w: val.w, h: val.h };
+      }
+    }
+  }
+  return images;
+}
+
 const sprites = {
   ball: createBallCanvas(),
   joao: createJoaoCanvas(false),
@@ -539,6 +554,7 @@ const sprites = {
   barsalini: createBarsaliniCanvas(false),
   barsaliniClimb: createBarsaliniCanvas(true),
   renzoImages: createRenzoImages(),
+  characters: createCharacterImages(),
   // Livello 1
   codeborgo: createCodeborgoCanvas(),
   aramaici: createAramaiciCanvas(),
@@ -870,22 +886,25 @@ function handleGlobalKey(code) {
 
 function applyHeroSelection() {
   if (selectedHeroIndex === 1) {
+    // CIUFFO (FACILE): Molto veloce, scattante
     hero.name = 'CIUFFO';
-    hero.speed = 265;
-    hero.jumpForce = -365;
-  } else if (selectedHeroIndex === 2) {
-    hero.name = 'LEON';
-    hero.speed = 220;
-    hero.jumpForce = -400; // Super salto di Leon!
-  } else if (selectedHeroIndex === 4) {
-    // EASTER EGG 2: BARSALINI!
-    hero.name = 'BARSALINI';
-    hero.speed = 245;
+    hero.speed = 280;
     hero.jumpForce = -385;
+  } else if (selectedHeroIndex === 2) {
+    // LEON (MEDIO): Meno veloce di Ciuffo ma ottimo salto
+    hero.name = 'LEON';
+    hero.speed = 235;
+    hero.jumpForce = -400;
+  } else if (selectedHeroIndex === 4) {
+    // BARSALINI (IMPOSSIBILE): Vittima prediletta di Renzo
+    hero.name = 'BARSALINI';
+    hero.speed = 225;
+    hero.jumpForce = -365;
   } else {
+    // JOAO (ABBASTANZA DIFFICILE): Velocita moderata
     hero.name = 'JOAO';
-    hero.speed = 230;
-    hero.jumpForce = -380;
+    hero.speed = 220;
+    hero.jumpForce = -375;
   }
 }
 
@@ -935,17 +954,42 @@ function startLevel(lvl) {
 
 function shootBall() {
   hero.hasBall = false;
-  hero.ballCooldown = 1.6;
   playSound('kick');
 
   let shootDir = hero.facingRight ? 1 : -1;
   let shootVx = shootDir * 600;
   let shootVy = -120;
+  let cooldown = 1.5;
+
+  if (hero.name === 'CIUFFO') {
+    // FACILE: Ottimo tiro (laser radente piatto, super veloce, ricarica rapida)
+    shootVx = shootDir * 750;
+    shootVy = -30;
+    cooldown = 0.95;
+  } else if (hero.name === 'LEON') {
+    // MEDIO: Sempre ottimo tiro (potente, teso)
+    shootVx = shootDir * 690;
+    shootVy = -60;
+    cooldown = 1.30;
+  } else if (hero.name === 'JOAO') {
+    // ABBASTANZA DIFFICILE: Tiro meno preciso (leggero scarto/wobble verticale)
+    const wobble = (Math.random() * 80 - 40);
+    shootVx = shootDir * 530;
+    shootVy = -110 + wobble;
+    cooldown = 1.70;
+  } else if (hero.name === 'BARSALINI') {
+    // IMPOSSIBILE: Tiro debole, affannato, ricarica lunghissima
+    shootVx = shootDir * 490;
+    shootVy = -130 + (Math.random() * 60 - 30);
+    cooldown = 2.20;
+  }
+
+  hero.ballCooldown = cooldown;
 
   if (hero.y < 120) {
     hero.facingRight = false; // sulla cima mira verso la porta a sinistra
-    shootVx = -650;
-    shootVy = -50;
+    shootVx = (hero.name === 'CIUFFO' || hero.name === 'LEON') ? -750 : -620;
+    shootVy = -40;
   }
 
   // Spawna il pallone davanti al piede dell'eroe a seconda della direzione
@@ -1003,10 +1047,15 @@ function update(dt) {
 
   // -----------------------------------------------------------------------
   // RENZO AI TATTICA E INTELLIGENTE (Lanci Mirati & Difesa della Porta)
-  // EASTER EGG BARSALINI: Renzo lo prende particolarmente di mira!
+  // Difficoltà implicita bilanciata: Facile (Ciuffo), Medio (Leon), Difficile (Joao), Impossibile (Barsalini)
   // -----------------------------------------------------------------------
   const isBarsa = (hero.name === 'BARSALINI');
-  const barsaSpeedMult = isBarsa ? 0.72 : 1.0; // 28% più rapido a lanciare contro Barsalini!
+  const isJoao = (hero.name === 'JOAO');
+  const isLeon = (hero.name === 'LEON');
+  const isCiuffo = (hero.name === 'CIUFFO');
+  // Moltiplicatore tempo di lancio (più basso = lancia molto più spesso)
+  const difficultyThrowMult = isBarsa ? 0.62 : (isJoao ? 0.90 : (isLeon ? 1.05 : 1.30));
+  const barsaSpeedMult = difficultyThrowMult;
 
   renzo.tacticTimer = (renzo.tacticTimer || 0) + dt;
   if (renzo.quoteTimer > 0) renzo.quoteTimer -= dt;
@@ -1186,7 +1235,8 @@ function update(dt) {
         if (isMissile) {
           renzo.quote = isBarsa ? "SILURO PER IL BARSA!" : "SILURO RASOTERRA!";
           renzo.quoteTimer = 1.3;
-          const speed = (currentLevel === 2) ? 340 : 300;
+          const baseMissileSpeed = (currentLevel === 2) ? 340 : 300;
+          const speed = isBarsa ? 370 : (isJoao ? baseMissileSpeed + 20 : (isLeon ? baseMissileSpeed : baseMissileSpeed - 40));
 
           const startX = Math.max(plat5.x1 + 30, Math.min(plat5.x2 - 30, renzoHandX));
           const startY = plat5.getSurfaceY(startX) - 14;
@@ -1232,7 +1282,7 @@ function update(dt) {
           });
         }
 
-        if ((currentLevel === 2 || isBarsa || Math.random() < 0.35) && !goalState.scored) {
+        if ((currentLevel === 2 || isBarsa || (isJoao && Math.random() < 0.4) || (isLeon && Math.random() < 0.2)) && !isCiuffo && !goalState.scored) {
           setTimeout(() => {
             if (gameState === STATE_PLAYING && !goalState.scored && hero.y > 120 && !isPaused) {
               const startX2 = Math.max(plat5.x1 + 30, Math.min(plat5.x2 - 30, renzo.x + (dirToHero * 38)));
@@ -1263,7 +1313,12 @@ function update(dt) {
       // STRATEGIA 3: PIANI INFERIORI (Tier 0 - Tier 4)
       // -------------------------------------------------------------------
       else {
-        const doTargetedLob = isBarsa ? (Math.random() < 0.85) : (Math.random() < 0.68);
+        // Probabilità parabola mirata scalata implicitamente per eroe:
+        // Barsalini: 92% (quasi solo tiri mirati al millimetro!)
+        // Joao: 75%
+        // Leon: 55%
+        // Ciuffo: 35% (Renzo lancia soprattutto a terra, facile da saltare per Ciuffo)
+        const doTargetedLob = Math.random() < (isBarsa ? 0.92 : (isJoao ? 0.75 : (isLeon ? 0.55 : 0.35)));
 
         if (doTargetedLob) {
           renzo.throwTimer = ((currentLevel === 2) ? 1.30 : 1.65) * barsaSpeedMult;
@@ -1328,7 +1383,8 @@ function update(dt) {
           renzo.quote = isBarsa ? "ROTOLA IN AREA BARSA!" : "ROTOLA IN AREA!";
           renzo.quoteTimer = 1.4;
 
-          const slipperSpeed = (currentLevel === 2) ? 240 : 200;
+          const baseSlipperSpeed = (currentLevel === 2) ? 240 : 200;
+          const slipperSpeed = isBarsa ? 290 : (isJoao ? baseSlipperSpeed + 25 : (isLeon ? baseSlipperSpeed : baseSlipperSpeed - 35));
           slippers.push({
             x: renzoHandX,
             y: renzoHandY,
@@ -1985,16 +2041,36 @@ function render() {
     // 1. Disegna solo lo sprite con l'eventuale flip dentro save/restore
     ctx.save();
     if (r.defeated) {
-      ctx.translate(r.x + 20, r.y + 20);
+      ctx.translate(r.x + 22, r.y + 22);
       ctx.rotate(r.spin);
-      ctx.drawImage(r.sprite, -22, -22, 45, 45);
-    } else {
-      if (r.dir < 0) {
-        ctx.translate(r.x + 45, r.y);
-        ctx.scale(-1, 1);
-        ctx.drawImage(r.sprite, 0, 0, 45, 45);
+      if (r.isAlex && sprites.characters && sprites.characters.alex) {
+        const alexDef = sprites.characters.alex.defeated;
+        const aW = 46, aH = 46;
+        ctx.drawImage(alexDef.img, -aW / 2, -aH / 2, aW, aH);
       } else {
-        ctx.drawImage(r.sprite, r.x, r.y, 45, 45);
+        ctx.drawImage(r.sprite, -22, -22, 45, 45);
+      }
+    } else {
+      if (r.isAlex && sprites.characters && sprites.characters.alex) {
+        const runFrame = Math.floor(performance.now() * 0.007) % 2;
+        const alexImgObj = (runFrame === 0) ? sprites.characters.alex.run1 : sprites.characters.alex.run2;
+        const aH = 50;
+        const aW = Math.round(aH * (alexImgObj.w / alexImgObj.h));
+        if (r.dir < 0) {
+          ctx.translate(r.x + 22, r.y + 22);
+          ctx.scale(-1, 1);
+          ctx.drawImage(alexImgObj.img, -aW / 2, -aH / 2, aW, aH);
+        } else {
+          ctx.drawImage(alexImgObj.img, r.x + (44 - aW) / 2, r.y - 4, aW, aH);
+        }
+      } else {
+        if (r.dir < 0) {
+          ctx.translate(r.x + 45, r.y);
+          ctx.scale(-1, 1);
+          ctx.drawImage(r.sprite, 0, 0, 45, 45);
+        } else {
+          ctx.drawImage(r.sprite, r.x, r.y, 45, 45);
+        }
       }
     }
     ctx.restore();
@@ -2053,8 +2129,31 @@ function render() {
     ctx.restore();
   });
 
-  // Eroe
-  let heroSprite = (selectedHeroIndex === 1)
+  // Eroe (con sprite animati ad alta definizione per Joao, Ciuffo, Leon, Carlon)
+  let heroCharKey = (selectedHeroIndex === 1 || hero.name === 'CIUFFO') ? 'ciuffo'
+    : (selectedHeroIndex === 2 || hero.name === 'LEON') ? 'leon'
+    : (selectedHeroIndex === 3 || hero.name === 'CARLON') ? 'carlon'
+    : (selectedHeroIndex === 4 || hero.name === 'BARSALINI') ? 'barsalini'
+    : 'joao';
+
+  let heroImgObj = null;
+  if (sprites.characters && sprites.characters[heroCharKey]) {
+    const charSprites = sprites.characters[heroCharKey];
+    if (gameState === STATE_VICTORY || gameState === STATE_LEVEL_CLEAR) {
+      heroImgObj = charSprites.cheer || charSprites.idle;
+    } else if (hero.isClimbing) {
+      heroImgObj = charSprites.climb || charSprites.idle;
+    } else if (!hero.hasBall && hero.ballCooldown > 0.65 && charSprites.kick) {
+      heroImgObj = charSprites.kick;
+    } else if (Math.abs(hero.vx) > 12 || (keys['ArrowLeft'] || keys['ArrowRight'] || keys['KeyA'] || keys['KeyD'])) {
+      const runFrame = Math.floor(performance.now() * 0.008) % 2;
+      heroImgObj = (runFrame === 0) ? charSprites.run1 : (charSprites.run2 || charSprites.run1);
+    } else {
+      heroImgObj = charSprites.idle;
+    }
+  }
+
+  let heroFallbackSprite = (selectedHeroIndex === 1)
     ? (hero.isClimbing ? sprites.ciuffoClimb : sprites.ciuffo)
     : (selectedHeroIndex === 2)
       ? (hero.isClimbing ? sprites.leonClimb : sprites.leon)
@@ -2064,12 +2163,27 @@ function render() {
 
   if (hero.invulnTimer <= 0 || Math.floor(hero.invulnTimer * 15) % 2 === 0) {
     ctx.save();
-    if (!hero.facingRight) {
-      ctx.translate(hero.x + 48, hero.y);
-      ctx.scale(-1, 1);
-      ctx.drawImage(heroSprite, 0, 0, 48, 48);
+    if (heroImgObj && heroImgObj.img) {
+      const drawH = 50;
+      const drawW = Math.round(drawH * (heroImgObj.w / heroImgObj.h));
+      const drawY = hero.y + 48 - drawH;
+      const drawX = hero.x + (48 - drawW) / 2;
+
+      if (!hero.facingRight) {
+        ctx.translate(hero.x + 24, drawY + drawH / 2);
+        ctx.scale(-1, 1);
+        ctx.drawImage(heroImgObj.img, -drawW / 2, -drawH / 2, drawW, drawH);
+      } else {
+        ctx.drawImage(heroImgObj.img, drawX, drawY, drawW, drawH);
+      }
     } else {
-      ctx.drawImage(heroSprite, hero.x, hero.y, 48, 48);
+      if (!hero.facingRight) {
+        ctx.translate(hero.x + 48, hero.y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(heroFallbackSprite, 0, 0, 48, 48);
+      } else {
+        ctx.drawImage(heroFallbackSprite, hero.x, hero.y, 48, 48);
+      }
     }
     ctx.restore();
 
@@ -2204,43 +2318,33 @@ function drawCharacterSelect() {
   const heroes = [
     {
       name: 'JOAO',
-      sub: 'L\'Eroe dai Ricci',
-      badge: 'EQUILIBRATO',
-      badgeCol: '#38bdf8',
-      img: sprites.joao,
-      desc: 'EQUILIBRATO\n\n• Velocita: 230\n• Salto: Calibrato\n• Tiro Preciso\n• Fede nel Brissago'
+      motto: 'swag',
+      charKey: 'joao',
+      fallback: sprites.joao
     },
     {
       name: 'CIUFFO',
-      sub: 'Il Re del Gel',
-      badge: 'SCATTANTE',
-      badgeCol: '#f59e0b',
-      img: sprites.ciuffo,
-      desc: 'SCATTANTE\n\n• Velocita: +15%\n• Dribbling Veloce\n• Scatto rapido\n• Ciuffo intonso'
+      motto: 'Nessuno si ricorda il suo vero nome',
+      charKey: 'ciuffo',
+      fallback: sprites.ciuffo
     },
     {
       name: 'LEON',
-      sub: 'Guerriero Bandiera',
-      badge: 'GRINTA PURA',
-      badgeCol: '#ef4444',
-      img: sprites.leon,
-      desc: 'GRINTA PURA\n\n• Salto: +25%\n• Tiro Esplosivo\n• Fisico roccioso\n• Bandiera del 1967'
+      motto: 'Si okay ma tuo fratello?',
+      charKey: 'leon',
+      fallback: sprites.leon
     },
     {
       name: 'CARLON',
-      sub: 'L\'Impegnato',
-      badge: 'EASTER EGG',
-      badgeCol: '#a855f7',
-      img: sprites.carlon,
-      desc: 'MISTERIOSO\n\n• Ruolo: Fuoriclasse\n• Agilita: Stellare\n• Disponibilita: ???\n• Prova a sceglierlo!'
+      motto: 'Ha altri impegni...',
+      charKey: 'carlon',
+      fallback: sprites.carlon
     },
     {
       name: 'BARSALINI',
-      sub: 'Bersaglio Renzo',
-      badge: 'HARD MODE',
-      badgeCol: '#f43f5e',
-      img: sprites.barsalini,
-      desc: 'BERSAGLIO N.1\n\n• Velocita: 245\n• Salto: +15%\n• ⚠️ Odio Renzo: MAX\n• Renzo urla "BARSA!"'
+      motto: 'Il bersaglio di Renzo',
+      charKey: 'barsalini',
+      fallback: sprites.barsalini
     }
   ];
 
@@ -2260,47 +2364,56 @@ function drawCharacterSelect() {
     ctx.strokeStyle = isSel ? '#ffe600' : '#334155';
     ctx.strokeRect(cx, 130, cardW, cardH);
 
-    // Badge in alto
-    ctx.fillStyle = h.badgeCol;
-    ctx.fillRect(cx + 32, 142, cardW - 64, 20);
-    ctx.fillStyle = '#050510';
-    ctx.font = 'bold 11px Courier New';
-    ctx.textAlign = 'center';
-    ctx.fillText(h.badge, cx + cardW / 2, 156);
-
     // Nome Eroe
     ctx.fillStyle = isSel ? '#ffd700' : '#ffffff';
-    ctx.font = 'bold 22px Courier New';
-    ctx.fillText(h.name, cx + cardW / 2, 188);
+    ctx.font = 'bold 24px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(h.name, cx + cardW / 2, 172);
 
-    // Sottotitolo
-    ctx.fillStyle = '#60a5fa';
-    ctx.font = '12px Courier New';
-    ctx.fillText(h.sub, cx + cardW / 2, 208);
-
-    // Riquadro Avatar
+    // Riquadro Avatar Portrait
     ctx.fillStyle = '#080c14';
-    ctx.fillRect(cx + (cardW - 88) / 2, 222, 88, 88);
-    ctx.drawImage(h.img, cx + (cardW - 74) / 2, 229, 74, 74);
+    ctx.fillRect(cx + 18, 188, cardW - 36, 200);
+    ctx.lineWidth = isSel ? 2 : 1;
+    ctx.strokeStyle = isSel ? '#ffd700' : '#1e293b';
+    ctx.strokeRect(cx + 18, 188, cardW - 36, 200);
 
-    // Descrizione
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '13px Courier New';
-    ctx.textAlign = 'left';
-    h.desc.split('\n').forEach((line, li) => {
-      ctx.fillText(line, cx + 18, 335 + li * 20);
-    });
+    // Disegno sprite del personaggio (ufficiale da spritesheet se disponibile)
+    let charImgObj = null;
+    if (sprites.characters && sprites.characters[h.charKey] && sprites.characters[h.charKey].idle) {
+      charImgObj = sprites.characters[h.charKey].idle;
+    }
+
+    if (charImgObj && charImgObj.img) {
+      const pH = 176;
+      const pW = Math.round(pH * (charImgObj.w / charImgObj.h));
+      ctx.drawImage(charImgObj.img, cx + (cardW - pW) / 2, 200, pW, pH);
+    } else {
+      ctx.drawImage(h.fallback, cx + (cardW - 120) / 2, 228, 120, 120);
+    }
+
+    // Unica scritta ammessa: Motto del personaggio
+    ctx.fillStyle = isSel ? '#ffd700' : '#93c5fd';
+    ctx.font = 'bold 15px Courier New';
+    ctx.textAlign = 'center';
+    if (h.motto.length > 22) {
+      const words = h.motto.split(' ');
+      const mid = Math.ceil(words.length / 2);
+      ctx.fillText(words.slice(0, mid).join(' '), cx + cardW / 2, 420);
+      ctx.fillText(words.slice(mid).join(' '), cx + cardW / 2, 442);
+    } else {
+      ctx.fillText(h.motto, cx + cardW / 2, 430);
+    }
 
     // Stato di selezione in basso
     ctx.textAlign = 'center';
     if (isSel) {
       ctx.fillStyle = (i === 3) ? '#f43f5e' : '#22c55e';
       ctx.font = 'bold 15px Courier New';
-      ctx.fillText((i === 3) ? '⚠️ EASTER EGG' : '▶ SELEZIONATO ◀', cx + cardW / 2, 565);
+      ctx.fillText((i === 3) ? '⚠️ EASTER EGG' : '▶ SELEZIONATO ◀', cx + cardW / 2, 560);
     } else {
       ctx.fillStyle = '#64748b';
       ctx.font = '12px Courier New';
-      ctx.fillText('Premi invio', cx + cardW / 2, 565);
+      ctx.fillText('Premi invio', cx + cardW / 2, 560);
     }
   });
 
@@ -2327,7 +2440,14 @@ function drawCharacterSelect() {
     ctx.strokeStyle = '#ffd700';
     ctx.strokeRect(boxX + 6, boxY + 6, boxW - 12, boxH - 12);
 
-    ctx.drawImage(sprites.carlon, boxX + 35, boxY + 65, 120, 120);
+    if (sprites.characters && sprites.characters.carlon && sprites.characters.carlon.idle) {
+      const cImgObj = sprites.characters.carlon.idle;
+      const cDrawH = 155;
+      const cDrawW = Math.round(cDrawH * (cImgObj.w / cImgObj.h));
+      ctx.drawImage(cImgObj.img, boxX + 50, boxY + 52, cDrawW, cDrawH);
+    } else {
+      ctx.drawImage(sprites.carlon, boxX + 35, boxY + 65, 120, 120);
+    }
 
     ctx.fillStyle = '#ff4444';
     ctx.font = 'bold 24px Courier New';
