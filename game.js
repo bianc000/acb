@@ -1,10 +1,14 @@
 // Donkey Brissago - WebApp Engine
-// Realizzato per iPhone, Safari, Chrome e Desktop
+// Fix: Testi nemici centrati e bug risolto
+// Novità: LIVELLO 2 con più piani e nuovi avversari:
+// - Terzino dell'Aquila ("LANCIAMI!")
+// - Capitano dello Gnosca
+// - Portiere del Chironico
+// - Attaccante del Camorino
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// Risoluzione virtuale arcade
 const V_WIDTH = 1280;
 const V_HEIGHT = 720;
 
@@ -12,10 +16,12 @@ const V_HEIGHT = 720;
 const STATE_SELECT = 0;
 const STATE_BRIEFING = 1;
 const STATE_PLAYING = 2;
-const STATE_VICTORY = 3;
-const STATE_GAMEOVER = 4;
+const STATE_LEVEL_CLEAR = 3;
+const STATE_VICTORY = 4;
+const STATE_GAMEOVER = 5;
 
 let gameState = STATE_SELECT;
+let currentLevel = 1; // Livello 1 o Livello 2
 let selectedHeroIndex = 0; // 0 = Joao, 1 = Ciuffo, 2 = Leon
 let score = 0;
 let highScore = 7500;
@@ -24,7 +30,7 @@ let bonusCountdown = 1.0;
 let lives = 3;
 let floatingTexts = [];
 
-// WEB AUDIO SYNTH (Effetti sonori arcade vintage a costo zero)
+// WEB AUDIO SYNTH
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 let audioCtx = null;
 
@@ -50,6 +56,22 @@ function playSound(type) {
       gain.gain.linearRampToValueAtTime(0, now + 0.15);
       osc.start(now);
       osc.stop(now + 0.15);
+    } else if (type === 'kick') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(130, now);
+      osc.frequency.exponentialRampToValueAtTime(35, now + 0.2);
+      gain.gain.setValueAtTime(0.3, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } else if (type === 'ko') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(320, now);
+      osc.frequency.exponentialRampToValueAtTime(80, now + 0.25);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.25);
+      osc.start(now);
+      osc.stop(now + 0.25);
     } else if (type === 'score') {
       osc.type = 'triangle';
       osc.frequency.setValueAtTime(520, now);
@@ -85,7 +107,7 @@ function playSound(type) {
 }
 
 // -------------------------------------------------------------------------
-// GENERAZIONE PROCEDURALE PIXEL ART (Identica alla versione C# / Desktop)
+// GENERAZIONE PROCEDURALE PIXEL ART
 // -------------------------------------------------------------------------
 
 function createPixelCanvas(w, h, drawFn) {
@@ -97,14 +119,22 @@ function createPixelCanvas(w, h, drawFn) {
   return c;
 }
 
-// Sprite di Joao (Capelli ricci neri, barbetta e baffetti, maglia rossa)
+function createBallCanvas() {
+  return createPixelCanvas(24, 24, (p) => {
+    p.fillStyle = '#1e1e28'; p.beginPath(); p.arc(12, 12, 11, 0, Math.PI * 2); p.fill();
+    p.fillStyle = '#ffffff'; p.beginPath(); p.arc(12, 12, 10, 0, Math.PI * 2); p.fill();
+    p.fillStyle = '#191923'; p.fillRect(10, 10, 5, 5);
+    p.fillRect(5, 5, 4, 3); p.fillRect(16, 5, 4, 3);
+    p.fillRect(5, 16, 4, 3); p.fillRect(16, 16, 4, 3);
+  });
+}
+
 function createJoaoCanvas(isClimbing = false) {
   return createPixelCanvas(40, 40, (p) => {
-    // Corpo
-    p.fillStyle = '#15151e'; p.fillRect(11, 4, 18, 34); // contorno
-    p.fillStyle = '#f0f0f5'; p.fillRect(12, 35, 6, 3); p.fillRect(22, 35, 6, 3); // scarpe
-    p.fillStyle = '#19191e'; p.fillRect(13, 25, 14, 8); // pantaloncini
-    p.fillStyle = '#d71e1e'; p.fillRect(12, 17, 16, 9); // maglia rossa
+    p.fillStyle = '#15151e'; p.fillRect(11, 4, 18, 34);
+    p.fillStyle = '#f0f0f5'; p.fillRect(12, 35, 6, 3); p.fillRect(22, 35, 6, 3);
+    p.fillStyle = '#19191e'; p.fillRect(13, 25, 14, 8);
+    p.fillStyle = '#d71e1e'; p.fillRect(12, 17, 16, 9);
 
     if (!isClimbing) {
       p.fillStyle = '#d71e1e'; p.fillRect(9, 18, 3, 7); p.fillRect(28, 18, 3, 7);
@@ -114,18 +144,16 @@ function createJoaoCanvas(isClimbing = false) {
       p.fillStyle = '#f5c39b'; p.fillRect(9, 11, 3, 3); p.fillRect(28, 11, 3, 3);
     }
 
-    // Viso
     p.fillStyle = '#f5c39b'; p.fillRect(14, 8, 12, 8);
-    p.fillStyle = '#2d190f'; p.fillRect(16, 11, 1, 1); p.fillRect(23, 11, 1, 1); // occhi
-    p.fillStyle = '#120f12'; p.fillRect(15, 9, 3, 1); p.fillRect(22, 9, 3, 1); // sopracciglia
+    p.fillStyle = '#2d190f'; p.fillRect(16, 11, 1, 1); p.fillRect(23, 11, 1, 1);
+    p.fillStyle = '#120f12'; p.fillRect(15, 9, 3, 1); p.fillRect(22, 9, 3, 1);
 
-    // Barba e Baffi dalla foto
+    // Barba e Baffi
     p.fillStyle = '#1e1614';
-    p.fillRect(17, 13, 6, 1); // baffi
-    p.fillRect(17, 15, 6, 2); // pizzetto
+    p.fillRect(17, 13, 6, 1); p.fillRect(17, 15, 6, 2);
     p.fillRect(15, 14, 1, 1); p.fillRect(24, 14, 1, 1);
 
-    // Riccioli neri dalla foto
+    // Riccioli neri
     p.fillStyle = '#120f12';
     p.fillRect(13, 3, 14, 6);
     p.fillRect(12, 4, 1, 2); p.fillRect(27, 4, 1, 2);
@@ -133,7 +161,6 @@ function createJoaoCanvas(isClimbing = false) {
   });
 }
 
-// Sprite di Ciuffo (Frangia/ciuffo sagomato, viso sbarazzino, maglia rossa)
 function createCiuffoCanvas(isClimbing = false) {
   return createPixelCanvas(40, 40, (p) => {
     p.fillStyle = '#15151e'; p.fillRect(11, 4, 18, 34);
@@ -151,18 +178,17 @@ function createCiuffoCanvas(isClimbing = false) {
 
     p.fillStyle = '#f5c39b'; p.fillRect(14, 8, 12, 8);
     p.fillStyle = '#231914';
-    p.fillRect(15, 9, 4, 1); p.fillRect(21, 9, 4, 1); // sopracciglia decise
-    p.fillRect(16, 11, 1, 1); p.fillRect(22, 11, 1, 1); // occhi
-    p.fillStyle = '#c86e6e'; p.fillRect(19, 13, 2, 1); // bocca
+    p.fillRect(15, 9, 4, 1); p.fillRect(21, 9, 4, 1);
+    p.fillRect(16, 11, 1, 1); p.fillRect(22, 11, 1, 1);
+    p.fillStyle = '#c86e6e'; p.fillRect(19, 13, 2, 1);
 
-    // Il Ciuffo pettinato sul davanti dalla foto
+    // Ciuffo frontale
     p.fillStyle = '#231914';
     p.fillRect(13, 3, 14, 5);
     p.fillRect(14, 6, 12, 2);
   });
 }
 
-// Sprite di Leon (Capelli castani mossi, pizzetto, grinta da vittoria)
 function createLeonCanvas(isClimbing = false) {
   return createPixelCanvas(40, 40, (p) => {
     p.fillStyle = '#15151e'; p.fillRect(11, 4, 18, 34);
@@ -180,86 +206,54 @@ function createLeonCanvas(isClimbing = false) {
 
     p.fillStyle = '#f5c39b'; p.fillRect(14, 8, 12, 8);
     p.fillStyle = '#000'; p.fillRect(16, 10, 1, 1); p.fillRect(22, 10, 1, 1);
-    p.fillStyle = '#500f0f'; p.fillRect(18, 12, 4, 2); // bocca aperta che grida
-    p.fillStyle = '#371e14'; p.fillRect(18, 14, 4, 2); // pizzetto
+    p.fillStyle = '#500f0f'; p.fillRect(18, 12, 4, 2);
+    p.fillStyle = '#371e14'; p.fillRect(18, 14, 4, 2);
 
-    // Capelli castani mossi
     p.fillStyle = '#4b2819';
     p.fillRect(13, 3, 14, 6);
     p.fillRect(12, 4, 1, 2); p.fillRect(27, 4, 1, 2);
   });
 }
 
-// Sprite di Renzo Boss (Capelli bianchi, occhiali, maglia AC Brissago, orologio)
 function createRenzoCanvas(isThrowing = false) {
   return createPixelCanvas(64, 64, (p) => {
-    p.fillStyle = '#191414'; p.fillRect(18, 6, 28, 52); // sagoma
-    p.fillStyle = '#1e2337'; p.fillRect(20, 48, 8, 10); p.fillRect(36, 48, 8, 10); // pantaloni
-    p.fillStyle = '#28282d'; p.fillRect(18, 57, 10, 5); p.fillRect(36, 57, 10, 5); // scarpe
+    p.fillStyle = '#191414'; p.fillRect(18, 6, 28, 52);
+    p.fillStyle = '#1e2337'; p.fillRect(20, 48, 8, 10); p.fillRect(36, 48, 8, 10);
+    p.fillStyle = '#28282d'; p.fillRect(18, 57, 10, 5); p.fillRect(36, 57, 10, 5);
 
-    // Maglia AC Brissago rossa con logo e scritta bianca
-    p.fillStyle = '#dc1919'; p.fillRect(18, 26, 28, 23);
+    p.fillStyle = '#dc1919'; p.fillRect(18, 26, 28, 23); // AC Brissago
     p.fillStyle = '#ffffff';
-    p.fillRect(22, 29, 3, 2); // logo
-    p.fillRect(28, 33, 14, 2); p.fillRect(28, 36, 11, 2); // AC BRISSAGO
+    p.fillRect(22, 29, 3, 2);
+    p.fillRect(28, 33, 14, 2); p.fillRect(28, 36, 11, 2);
 
-    // Braccia
     if (!isThrowing) {
       p.fillStyle = '#dc1919'; p.fillRect(11, 26, 7, 16); p.fillRect(46, 26, 7, 16);
       p.fillStyle = '#f5c3a0'; p.fillRect(11, 41, 7, 6); p.fillRect(46, 41, 7, 6);
-      p.fillStyle = '#c8cdd7'; p.fillRect(46, 40, 7, 2); // OROLOGIO D'ARGENTO
+      p.fillStyle = '#c8cdd7'; p.fillRect(46, 40, 7, 2); // orologio
     } else {
       p.fillStyle = '#dc1919'; p.fillRect(11, 26, 7, 16); p.fillRect(46, 16, 7, 14);
       p.fillStyle = '#f5c3a0'; p.fillRect(11, 41, 7, 6); p.fillRect(46, 10, 7, 7);
       p.fillStyle = '#c8cdd7'; p.fillRect(46, 17, 7, 2);
-      p.fillStyle = '#1450be'; p.fillRect(44, 4, 12, 7); // Ciabatta impugnata
+      p.fillStyle = '#1450be'; p.fillRect(44, 4, 12, 7);
     }
 
-    // Viso
     p.fillStyle = '#f5c3a0'; p.fillRect(22, 10, 20, 14);
-
-    // OCCHIALI DA VISTA RETTANGOLARI
-    p.fillStyle = '#6e737d';
-    p.fillRect(24, 13, 6, 4); p.fillRect(34, 13, 6, 4); p.fillRect(30, 14, 4, 1);
-    p.fillStyle = '#f0f5ff';
-    p.fillRect(25, 14, 4, 2); p.fillRect(35, 14, 4, 2); // lenti
-    p.fillStyle = '#281e19'; p.fillRect(26, 15, 1, 1); p.fillRect(36, 15, 1, 1); // occhi
-
-    p.fillStyle = '#bebec3'; p.fillRect(24, 21, 16, 3); // barbetta bianca corta
-    p.fillStyle = '#ebebf0'; p.fillRect(22, 6, 20, 5); // capelli bianchi corti
+    p.fillStyle = '#6e737d'; p.fillRect(24, 13, 6, 4); p.fillRect(34, 13, 6, 4); p.fillRect(30, 14, 4, 1);
+    p.fillStyle = '#f0f5ff'; p.fillRect(25, 14, 4, 2); p.fillRect(35, 14, 4, 2);
+    p.fillStyle = '#281e19'; p.fillRect(26, 15, 1, 1); p.fillRect(36, 15, 1, 1);
+    p.fillStyle = '#bebec3'; p.fillRect(24, 21, 16, 3);
+    p.fillStyle = '#ebebf0'; p.fillRect(22, 6, 20, 5);
   });
 }
 
-// Sprite di Alex il Traditore (Alto, maglia azzurra AS Verzaschesi con chiocciola)
-function createAlexCanvas() {
-  return createPixelCanvas(42, 42, (p) => {
-    p.fillStyle = '#141419'; p.fillRect(11, 3, 18, 37);
-    p.fillStyle = '#28a5eb'; p.fillRect(12, 31, 6, 5); p.fillRect(22, 31, 6, 5); // calzettoni azzurri
-    p.fillStyle = '#f5f5fa'; p.fillRect(12, 24, 16, 7); // pantaloncini bianchi
-    p.fillStyle = '#28a5eb'; p.fillRect(12, 14, 16, 10); // maglia azzurra Verzaschesi
-
-    // Stemma chiocciola
-    p.fillStyle = '#d21e1e'; p.fillRect(22, 16, 4, 4);
-    p.fillStyle = '#f0c81e'; p.fillRect(23, 17, 2, 2);
-
-    // Viso sorridente e slanciato
-    p.fillStyle = '#f5c39b'; p.fillRect(14, 7, 12, 8);
-    p.fillStyle = '#000'; p.fillRect(16, 9, 1, 1); p.fillRect(22, 9, 1, 1);
-    p.fillStyle = '#fff'; p.fillRect(17, 12, 6, 1); // denti
-
-    // Capelli castani ondulati
-    p.fillStyle = '#6e4123'; p.fillRect(13, 3, 14, 5);
-  });
-}
-
-// Sprite Rivali
+// RIVALI LIVELLO 1
 function createCodeborgoCanvas() {
   return createPixelCanvas(36, 36, (p) => {
     p.fillStyle = '#140f0a'; p.fillRect(10, 4, 16, 30);
-    p.fillStyle = '#55321e'; p.fillRect(13, 7, 10, 7); // giocatore di colore
-    p.fillStyle = '#fad71e'; p.fillRect(11, 14, 14, 9); // maglia giallonera
+    p.fillStyle = '#55321e'; p.fillRect(13, 7, 10, 7);
+    p.fillStyle = '#fad71e'; p.fillRect(11, 14, 14, 9);
     p.fillStyle = '#19191e'; p.fillRect(14, 14, 3, 9); p.fillRect(20, 14, 3, 9);
-    p.fillStyle = '#0f0f0f'; p.fillRect(12, 4, 12, 3); // capelli
+    p.fillStyle = '#0f0f0f'; p.fillRect(12, 4, 12, 3);
   });
 }
 
@@ -267,8 +261,8 @@ function createAramaiciCanvas() {
   return createPixelCanvas(36, 36, (p) => {
     p.fillStyle = '#141414'; p.fillRect(10, 4, 16, 30);
     p.fillStyle = '#f5c39b'; p.fillRect(13, 7, 10, 7);
-    p.fillStyle = '#b41414'; p.fillRect(11, 14, 14, 9); // maglia rossa
-    p.fillStyle = '#f0c81e'; // fascia oro
+    p.fillStyle = '#b41414'; p.fillRect(11, 14, 14, 9);
+    p.fillStyle = '#f0c81e';
     for (let i = 0; i < 8; i++) p.fillRect(13 + i, 14 + i, 2, 1);
     p.fillStyle = '#1e140f'; p.fillRect(12, 4, 12, 3);
   });
@@ -277,35 +271,101 @@ function createAramaiciCanvas() {
 function createPedemonte11Canvas() {
   return createPixelCanvas(40, 40, (p) => {
     p.fillStyle = '#1e0a0a'; p.fillRect(11, 4, 18, 34);
-    p.fillStyle = '#ff8c82'; p.fillRect(14, 8, 12, 7); // faccia rossa furiosa!
-    p.fillStyle = '#ff0000'; p.fillRect(23, 7, 2, 2); // vena
-    p.fillStyle = '#1446b4'; p.fillRect(12, 15, 16, 10); // maglia blu
+    p.fillStyle = '#ff8c82'; p.fillRect(14, 8, 12, 7);
+    p.fillStyle = '#ff0000'; p.fillRect(23, 7, 2, 2);
+    p.fillStyle = '#1446b4'; p.fillRect(12, 15, 16, 10);
     p.fillStyle = '#ffffff';
-    p.fillRect(15, 17, 3, 6); p.fillRect(21, 17, 3, 6); // NUMERO 11 GIGANTE
-    p.fillStyle = '#640a0a'; p.fillRect(17, 13, 6, 2); // bocca che urla
-    p.fillStyle = '#321e14'; p.fillRect(13, 4, 14, 4); // capelli
+    p.fillRect(15, 17, 3, 6); p.fillRect(21, 17, 3, 6);
+    p.fillStyle = '#640a0a'; p.fillRect(17, 13, 6, 2);
+    p.fillStyle = '#321e14'; p.fillRect(13, 4, 14, 4);
+  });
+}
+
+function createAlexCanvas() {
+  return createPixelCanvas(42, 42, (p) => {
+    p.fillStyle = '#141419'; p.fillRect(11, 3, 18, 37);
+    p.fillStyle = '#28a5eb'; p.fillRect(12, 31, 6, 5); p.fillRect(22, 31, 6, 5);
+    p.fillStyle = '#f5f5fa'; p.fillRect(12, 24, 16, 7);
+    p.fillStyle = '#28a5eb'; p.fillRect(12, 14, 16, 10);
+    p.fillStyle = '#d21e1e'; p.fillRect(22, 16, 4, 4);
+    p.fillStyle = '#f0c81e'; p.fillRect(23, 17, 2, 2);
+    p.fillStyle = '#f5c39b'; p.fillRect(14, 7, 12, 8);
+    p.fillStyle = '#000'; p.fillRect(16, 9, 1, 1); p.fillRect(22, 9, 1, 1);
+    p.fillStyle = '#fff'; p.fillRect(17, 12, 6, 1);
+    p.fillStyle = '#6e4123'; p.fillRect(13, 3, 14, 5);
+  });
+}
+
+// RIVALI NUOVI LIVELLO 2
+// 1. Terzino dell'Aquila (Maglia neroverde con aquila, urla "LANCIAMI!")
+function createAquilaCanvas() {
+  return createPixelCanvas(38, 38, (p) => {
+    p.fillStyle = '#141414'; p.fillRect(10, 4, 18, 32);
+    p.fillStyle = '#145028'; p.fillRect(11, 14, 16, 9); // maglia verde Aquila
+    p.fillStyle = '#141e14'; p.fillRect(15, 14, 4, 9);  // striscia nera
+    p.fillStyle = '#f5c39b'; p.fillRect(13, 7, 12, 7);
+    p.fillStyle = '#781414'; p.fillRect(17, 11, 4, 3);  // bocca aperta che grida!
+    p.fillStyle = '#28140a'; p.fillRect(12, 4, 14, 3);
+  });
+}
+
+// 2. Capitano dello Gnosca (Maglia biancoblù con fascia capitano C)
+function createGnoscaCanvas() {
+  return createPixelCanvas(38, 38, (p) => {
+    p.fillStyle = '#141414'; p.fillRect(10, 4, 18, 32);
+    p.fillStyle = '#1e3cb4'; p.fillRect(11, 14, 16, 9); // maglia blu Gnosca
+    p.fillStyle = '#f5d228'; p.fillRect(8, 17, 3, 4);   // FASCIA CAPITANO Gialla
+    p.fillStyle = '#000'; p.fillRect(9, 18, 1, 2);
+    p.fillStyle = '#f5c39b'; p.fillRect(13, 7, 12, 7);
+    p.fillStyle = '#000'; p.fillRect(15, 9, 1, 1); p.fillRect(21, 9, 1, 1);
+    p.fillStyle = '#3c281e'; p.fillRect(12, 4, 14, 3);
+  });
+}
+
+// 3. Portiere del Chironico (Maglia fluo con guantoni grandi)
+function createChironicoGkCanvas() {
+  return createPixelCanvas(40, 40, (p) => {
+    p.fillStyle = '#141414'; p.fillRect(11, 4, 18, 34);
+    p.fillStyle = '#e6ff00'; p.fillRect(12, 14, 16, 10); // maglia giallo fluo portiere
+    // GUANTONI GRANDI DA PORTIERE
+    p.fillStyle = '#ffffff'; p.fillRect(6, 18, 6, 6); p.fillRect(28, 18, 6, 6);
+    p.fillStyle = '#f5c39b'; p.fillRect(14, 8, 12, 7);
+    p.fillStyle = '#000'; p.fillRect(16, 10, 1, 1); p.fillRect(22, 10, 1, 1);
+    p.fillStyle = '#282828'; p.fillRect(13, 4, 14, 4);
+  });
+}
+
+// 4. Attaccante del Camorino (Bomber in maglia granata/rossa, scattante)
+function createCamorinoCanvas() {
+  return createPixelCanvas(42, 42, (p) => {
+    p.fillStyle = '#141414'; p.fillRect(11, 3, 18, 37);
+    p.fillStyle = '#781428'; p.fillRect(12, 14, 16, 10); // maglia granata Camorino
+    p.fillStyle = '#f5c39b'; p.fillRect(14, 7, 12, 8);
+    p.fillStyle = '#000'; p.fillRect(16, 9, 1, 1); p.fillRect(22, 9, 1, 1);
+    p.fillStyle = '#28140a'; p.fillRect(13, 3, 14, 4); // cresta/capelli da bomber
+    p.fillRect(17, 1, 6, 3);
   });
 }
 
 function createTairaCanvas() {
   return createPixelCanvas(48, 48, (p) => {
     p.fillStyle = '#141414'; p.fillRect(13, 6, 22, 38);
-    p.fillStyle = '#dc1919'; p.fillRect(15, 22, 18, 14); // maglia Brissago
-    p.fillStyle = '#fad71e'; p.fillRect(11, 26, 4, 5); // FASCIA CAPITANO
+    p.fillStyle = '#dc1919'; p.fillRect(15, 22, 18, 14);
+    p.fillStyle = '#fad71e'; p.fillRect(11, 26, 4, 5);
     p.fillStyle = '#000000'; p.fillRect(12, 28, 2, 1);
-    p.fillStyle = '#f5c39b'; p.fillRect(17, 12, 14, 8); // viso
-    p.fillStyle = '#281e14'; p.fillRect(19, 18, 10, 2); // baffi
-    p.fillStyle = '#2d4b2d'; p.fillRect(16, 5, 16, 6); // berretto militare
-    p.fillStyle = '#141e14'; p.fillRect(14, 10, 20, 2); // visiera
-    p.fillStyle = '#f5d228'; p.fillRect(23, 6, 3, 3); // fregio oro
+    p.fillStyle = '#f5c39b'; p.fillRect(17, 12, 14, 8);
+    p.fillStyle = '#281e14'; p.fillRect(19, 18, 10, 2);
+    p.fillStyle = '#2d4b2d'; p.fillRect(16, 5, 16, 6);
+    p.fillStyle = '#141e14'; p.fillRect(14, 10, 20, 2);
+    p.fillStyle = '#f5d228'; p.fillRect(23, 6, 3, 3);
   });
 }
 
 function createSlipperCanvas() {
   return createPixelCanvas(28, 28, (p) => {
     p.fillStyle = '#195ad2'; p.fillRect(7, 5, 14, 18);
-    p.fillStyle = '#0a1e5a'; p.fillRect(9, 9, 10, 7); // fascia
-    p.fillStyle = '#78b4ff'; p.fillRect(11, 11, 3, 2); // riflesso
+    p.fillStyle = '#0a1e5a'; p.fillRect(9, 9, 10, 7);
+    p.fillStyle = '#78b4ff'; p.fillRect(11, 11, 3, 2);
   });
 }
 
@@ -314,20 +374,20 @@ function createGirderCanvas() {
     p.fillStyle = '#dc2828'; p.fillRect(0, 0, 32, 16);
     p.fillStyle = '#ff5a5a'; p.fillRect(0, 0, 32, 2);
     p.fillStyle = '#500a0a'; p.fillRect(0, 14, 32, 2);
-    p.fillStyle = '#ffe6c8'; p.fillRect(4, 1, 2, 2); p.fillRect(20, 1, 2, 2); // rivetti
+    p.fillStyle = '#ffe6c8'; p.fillRect(4, 1, 2, 2); p.fillRect(20, 1, 2, 2);
   });
 }
 
 function createLadderCanvas() {
   return createPixelCanvas(24, 16, (p) => {
     p.fillStyle = '#00d2ff';
-    p.fillRect(2, 0, 3, 16); p.fillRect(19, 0, 3, 16); // montanti
-    p.fillRect(5, 7, 14, 2); // piolo
+    p.fillRect(2, 0, 3, 16); p.fillRect(19, 0, 3, 16);
+    p.fillRect(5, 7, 14, 2);
   });
 }
 
-// Inizializza texture
 const sprites = {
+  ball: createBallCanvas(),
   joao: createJoaoCanvas(false),
   joaoClimb: createJoaoCanvas(true),
   ciuffo: createCiuffoCanvas(false),
@@ -336,10 +396,16 @@ const sprites = {
   leonClimb: createLeonCanvas(true),
   renzoNormal: createRenzoCanvas(false),
   renzoThrow: createRenzoCanvas(true),
-  alex: createAlexCanvas(),
+  // Livello 1
   codeborgo: createCodeborgoCanvas(),
   aramaici: createAramaiciCanvas(),
   pedemonte11: createPedemonte11Canvas(),
+  alex: createAlexCanvas(),
+  // Livello 2
+  aquila: createAquilaCanvas(),
+  gnosca: createGnoscaCanvas(),
+  chironicoGk: createChironicoGkCanvas(),
+  camorino: createCamorinoCanvas(),
   taira: createTairaCanvas(),
   slipper: createSlipperCanvas(),
   girder: createGirderCanvas(),
@@ -347,7 +413,7 @@ const sprites = {
 };
 
 // -------------------------------------------------------------------------
-// GEOMETRIA LIVELLO DONKEY BRISSAGO
+// GEOMETRIA LIVELLI (Livello 1 e Livello 2 con più piani)
 // -------------------------------------------------------------------------
 
 class Platform {
@@ -394,26 +460,56 @@ class Ladder {
   }
 }
 
-// Costruzione piattaforme e scale
-const platforms = [
-  new Platform(80, 130, 480, 130),     // Cima Renzo
-  new Platform(380, 190, 1140, 230),   // Tier 4 (Alex Verzaschesi)
-  new Platform(140, 370, 1140, 330),   // Tier 3 (Pedemonte 11)
-  new Platform(140, 470, 1140, 510),   // Tier 2 (Aramaici)
-  new Platform(140, 630, 1140, 590),   // Tier 1 (Codeborgo)
-  new Platform(60, 695, 1220, 695)     // Terra
-];
+let platforms = [];
+let ladders = [];
 
-const ladders = [
-  new Ladder(1050, 595, 695), new Ladder(420, 620, 695),
-  new Ladder(240, 475, 625), new Ladder(800, 495, 605),
-  new Ladder(1050, 335, 505), new Ladder(520, 355, 485),
-  new Ladder(240, 200, 365), new Ladder(860, 220, 340),
-  new Ladder(440, 130, 195)
-];
+function buildLevelGeometry(level) {
+  platforms = [];
+  ladders = [];
+
+  if (level === 1) {
+    // LIVELLO 1 (5 Tiers)
+    platforms.push(
+      new Platform(80, 130, 480, 130),     // Cima Renzo
+      new Platform(380, 190, 1140, 230),   // Tier 4 (Alex Verzaschesi)
+      new Platform(140, 370, 1140, 330),   // Tier 3 (Pedemonte 11)
+      new Platform(140, 470, 1140, 510),   // Tier 2 (Aramaici)
+      new Platform(140, 630, 1140, 590),   // Tier 1 (Codeborgo)
+      new Platform(60, 695, 1220, 695)     // Terra
+    );
+
+    ladders.push(
+      new Ladder(1050, 595, 695), new Ladder(420, 620, 695),
+      new Ladder(240, 475, 625), new Ladder(800, 495, 605),
+      new Ladder(1050, 335, 505), new Ladder(520, 355, 485),
+      new Ladder(240, 200, 365), new Ladder(860, 220, 340),
+      new Ladder(440, 130, 195)
+    );
+  } else {
+    // LIVELLO 2 (Più Piani, 6 Tiers inclinati più ripidi!)
+    platforms.push(
+      new Platform(80, 110, 460, 110),     // Cima Renzo (ancora più in alto!)
+      new Platform(340, 160, 1160, 200),   // Tier 5: Attaccante Camorino
+      new Platform(120, 300, 1160, 260),   // Tier 4: Portiere Chironico
+      new Platform(120, 400, 1160, 440),   // Tier 3: Capitano Gnosca
+      new Platform(120, 540, 1160, 500),   // Tier 2: Terzino Aquila ("LANCIAMI!")
+      new Platform(120, 620, 1160, 650),   // Tier 1: Slalom stretto
+      new Platform(50, 700, 1230, 700)     // Terra
+    );
+
+    ladders.push(
+      new Ladder(1080, 645, 700), new Ladder(350, 625, 700),
+      new Ladder(200, 535, 625), new Ladder(880, 505, 640),
+      new Ladder(1060, 435, 505), new Ladder(480, 410, 530),
+      new Ladder(220, 295, 405), new Ladder(850, 265, 435),
+      new Ladder(1020, 195, 265), new Ladder(420, 165, 295),
+      new Ladder(410, 110, 165)
+    );
+  }
+}
 
 // -------------------------------------------------------------------------
-// ENTITA: EROE, RENZO, CIABATTE E RIVALI
+// STATO E GESTIONE DEL GIOCO
 // -------------------------------------------------------------------------
 
 let hero = {
@@ -428,7 +524,9 @@ let hero = {
   isClimbing: false,
   facingRight: true,
   invulnTimer: 0,
-  scale: 1.3
+  scale: 1.3,
+  hasBall: true,
+  ballCooldown: 0
 };
 
 let renzo = {
@@ -439,20 +537,38 @@ let renzo = {
   animTimer: 0
 };
 
+let kickedBalls = [];
 let slippers = [];
 let rivals = [];
 
-function setupRivals() {
-  rivals = [
-    { name: 'Codeborgo', sprite: sprites.codeborgo, plat: platforms[4], x: 600, speed: 95, dir: 1, pts: 200, tagCol: '#f0c81e', jumped: false },
-    { name: 'Aramaici', sprite: sprites.aramaici, plat: platforms[3], x: 450, speed: 150, dir: 1, pts: 300, tagCol: '#f0c81e', jumped: false },
-    { name: 'Pedemonte #11', sprite: sprites.pedemonte11, plat: platforms[2], x: 700, speed: 230, dir: 1, pts: 500, tagCol: '#ff4444', isPedemonte: true, jumped: false },
-    { name: 'Alex (Verzaschesi)', sprite: sprites.alex, plat: platforms[1], x: 800, speed: 175, dir: 1, pts: 800, tagCol: '#28c8ff', isAlex: true, jumped: false }
-  ];
+function setupRivalsForLevel(level) {
+  rivals = [];
+
+  if (level === 1) {
+    // Rivali Livello 1
+    rivals.push(
+      { name: 'Codeborgo', sprite: sprites.codeborgo, plat: platforms[4], x: 600, speed: 95, dir: 1, pts: 200, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
+      { name: 'Aramaici', sprite: sprites.aramaici, plat: platforms[3], x: 450, speed: 145, dir: 1, pts: 300, tagCol: '#f0c81e', defeated: false, fallVy: 0, spin: 0 },
+      { name: 'Pedemonte #11', sprite: sprites.pedemonte11, plat: platforms[2], x: 650, speed: 165, dir: 1, pts: 500, tagCol: '#ff4444', isPedemonte: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 },
+      { name: 'Alex (Verzaschesi)', sprite: sprites.alex, plat: platforms[1], x: 800, speed: 175, dir: 1, pts: 800, tagCol: '#28c8ff', isAlex: true, defeated: false, fallVy: 0, spin: 0 }
+    );
+  } else {
+    // Rivali Livello 2 (Più tosti!)
+    rivals.push(
+      // Tier 2: Terzino dell'Aquila (urla "LANCIAMI!")
+      { name: "Terzino Aquila", sprite: sprites.aquila, plat: platforms[4], x: 500, speed: 185, dir: 1, pts: 350, tagCol: '#28ff78', isAquila: true, bubbleTimer: 0, defeated: false, fallVy: 0, spin: 0 },
+      // Tier 3: Capitano dello Gnosca
+      { name: "Capitano Gnosca", sprite: sprites.gnosca, plat: platforms[3], x: 720, speed: 195, dir: -1, pts: 500, tagCol: '#f5d228', defeated: false, fallVy: 0, spin: 0 },
+      // Tier 4: Portiere del Chironico
+      { name: "Portiere Chironico", sprite: sprites.chironicoGk, plat: platforms[2], x: 450, speed: 205, dir: 1, pts: 650, tagCol: '#e6ff00', isChironicoGk: true, defeated: false, fallVy: 0, spin: 0 },
+      // Tier 5 (ultimo piano prima di Renzo): Attaccante del Camorino
+      { name: "Attaccante Camorino", sprite: sprites.camorino, plat: platforms[1], x: 850, speed: 240, dir: -1, pts: 1000, tagCol: '#ff3c64', isCamorino: true, defeated: false, fallVy: 0, spin: 0, alertTimer: 0 }
+    );
+  }
 }
 
 // -------------------------------------------------------------------------
-// INPUT MANAGEMENT (Tastiera + Touch Screen per iPhone)
+// INPUT MANAGEMENT
 // -------------------------------------------------------------------------
 
 const keys = {};
@@ -470,7 +586,7 @@ window.addEventListener('keyup', (e) => {
 // Touch buttons
 document.querySelectorAll('.touch-btn').forEach((btn) => {
   const code = btn.getAttribute('data-key');
-  
+
   const activate = (e) => {
     e.preventDefault();
     initAudio();
@@ -493,7 +609,6 @@ document.querySelectorAll('.touch-btn').forEach((btn) => {
   btn.addEventListener('mouseup', deactivate);
 });
 
-// Tap su canvas per avanzare schermate
 canvas.addEventListener('touchstart', (e) => {
   e.preventDefault();
   initAudio();
@@ -510,18 +625,29 @@ function handleGlobalKey(code) {
       selectedHeroIndex = (selectedHeroIndex + 1) % 3;
       playSound('score');
     }
-    if (code === 'Space' || code === 'Enter') {
+    if (code === 'Space' || code === 'Enter' || code === 'KeyK') {
       applyHeroSelection();
+      currentLevel = 1;
       gameState = STATE_BRIEFING;
       playSound('jump');
     }
   } else if (gameState === STATE_BRIEFING) {
-    if (code === 'Space' || code === 'Enter') {
-      startGame();
+    if (code === 'Space' || code === 'Enter' || code === 'KeyK') {
+      startLevel(currentLevel);
+      playSound('jump');
+    }
+  } else if (gameState === STATE_PLAYING) {
+    if ((code === 'KeyK' || code === 'KeyX' || code === 'Enter') && hero.hasBall && !hero.isClimbing) {
+      shootBall();
+    }
+  } else if (gameState === STATE_LEVEL_CLEAR) {
+    if (code === 'Space' || code === 'Enter' || code === 'KeyK') {
+      currentLevel = 2;
+      startLevel(2);
       playSound('jump');
     }
   } else if (gameState === STATE_VICTORY || gameState === STATE_GAMEOVER) {
-    if (code === 'Space' || code === 'Enter') {
+    if (code === 'Space' || code === 'Enter' || code === 'KeyK') {
       gameState = STATE_SELECT;
     }
   }
@@ -543,25 +669,51 @@ function applyHeroSelection() {
   }
 }
 
-function startGame() {
+function startLevel(lvl) {
+  currentLevel = lvl;
+  buildLevelGeometry(lvl);
   gameState = STATE_PLAYING;
-  score = 0;
-  bonusTimer = 5000;
-  lives = 3;
+  bonusTimer = lvl === 1 ? 5000 : 7000;
   slippers = [];
+  kickedBalls = [];
   floatingTexts = [];
+
   hero.x = 160;
-  hero.y = 695 - 52;
+  hero.y = platforms[platforms.length - 1].y1 - 52;
   hero.vx = 0;
   hero.vy = 0;
   hero.isGrounded = true;
   hero.isClimbing = false;
   hero.invulnTimer = 0;
-  setupRivals();
+  hero.hasBall = true;
+  hero.ballCooldown = 0;
+
+  renzo.x = 140;
+  renzo.y = platforms[0].y1 - 86;
+  renzo.throwTimer = 2.2;
+  renzo.isThrowing = false;
+
+  setupRivalsForLevel(lvl);
+}
+
+function shootBall() {
+  hero.hasBall = false;
+  hero.ballCooldown = 1.6;
+  playSound('kick');
+
+  const shootDir = hero.facingRight ? 1 : -1;
+  kickedBalls.push({
+    x: hero.x + (hero.facingRight ? 40 : -10),
+    y: hero.y + 30,
+    vx: shootDir * 600,
+    vy: -120,
+    rot: 0,
+    active: true
+  });
 }
 
 // -------------------------------------------------------------------------
-// GAME LOOP (Update & Render)
+// GAME LOOP
 // -------------------------------------------------------------------------
 
 let lastTime = performance.now();
@@ -580,14 +732,22 @@ requestAnimationFrame(gameLoop);
 function update(dt) {
   if (gameState !== STATE_PLAYING) return;
 
-  // Countdown punteggio bonus
   bonusCountdown -= dt;
   if (bonusCountdown <= 0) {
     bonusCountdown = 1.0;
     bonusTimer = Math.max(0, bonusTimer - 100);
   }
 
-  // Renzo lancia ciabatte
+  // Ricarica palla
+  if (!hero.hasBall) {
+    hero.ballCooldown -= dt;
+    if (hero.ballCooldown <= 0) {
+      hero.hasBall = true;
+      floatingTexts.push({ text: '⚽ PALLA PRONTA!', x: hero.x - 10, y: hero.y - 20, timer: 0.8, color: '#66ff88' });
+    }
+  }
+
+  // Renzo ciabatte
   renzo.throwTimer -= dt;
   if (renzo.throwTimer <= 0.6 && !renzo.isThrowing) {
     renzo.isThrowing = true;
@@ -597,7 +757,8 @@ function update(dt) {
     renzo.animTimer -= dt;
     if (renzo.animTimer <= 0) {
       renzo.isThrowing = false;
-      renzo.throwTimer = 2.6;
+      // Nel livello 2 Renzo tira più veloce!
+      renzo.throwTimer = (currentLevel === 2) ? 1.9 : 2.5;
       slippers.push({
         x: renzo.x + 80,
         y: renzo.y + 60,
@@ -651,7 +812,6 @@ function update(dt) {
       }
     }
 
-    // Collisione con eroe
     if (s.active && hero.invulnTimer <= 0) {
       if (Math.hypot((hero.x + 20) - s.x, (hero.y + 25) - s.y) < 24) {
         hitHero('CIABATTATO DA RENZO!');
@@ -663,12 +823,97 @@ function update(dt) {
     }
   }
 
+  // Aggiorna palloni calciati
+  for (let i = kickedBalls.length - 1; i >= 0; i--) {
+    const b = kickedBalls[i];
+    b.x += b.vx * dt;
+    b.vy += 450 * dt;
+    b.y += b.vy * dt;
+    b.rot += (b.vx > 0 ? 15 : -15) * dt;
+
+    for (let plat of platforms) {
+      if (plat.containsX(b.x)) {
+        const surfY = plat.getSurfaceY(b.x) - 12;
+        if (b.y >= surfY - 8 && b.y <= surfY + 16 && b.vy >= 0) {
+          b.y = surfY;
+          b.vy = -140;
+          break;
+        }
+      }
+    }
+
+    // K.O. Rivali
+    for (let r of rivals) {
+      if (!r.defeated) {
+        if (Math.hypot(b.x - (r.x + 20), b.y - (r.y + 20)) < 36) {
+          r.defeated = true;
+          r.fallVy = -320;
+          playSound('ko');
+
+          let koMsg = `GOOOL! +${r.pts * 2} PTS!`;
+          if (r.isPedemonte) koMsg = `11 DEL PEDEMONTE ABBATTUTO! +1000 PTS!`;
+          if (r.isAlex) koMsg = `ALEX IL TRADITORE MESSO K.O.! +1600 PTS!`;
+          if (r.isCamorino) koMsg = `BOMBER DEL CAMORINO STESO! +2000 PTS!`;
+          if (r.isAquila) koMsg = `AQUILA ZITTITA! +700 PTS!`;
+
+          score += r.pts * 2;
+          floatingTexts.push({ text: koMsg, x: r.x - 40, y: r.y - 25, timer: 1.4, color: '#00ff88' });
+          b.active = false;
+          break;
+        }
+      }
+    }
+
+    // Distrugge ciabatta
+    for (let s of slippers) {
+      if (s.active && Math.hypot(b.x - s.x, b.y - s.y) < 26) {
+        s.active = false;
+        b.active = false;
+        score += 150;
+        playSound('score');
+        floatingTexts.push({ text: 'CIABATTA POLVERIZZATA! +150', x: s.x - 40, y: s.y - 20, timer: 1.0, color: '#ffea00' });
+        break;
+      }
+    }
+
+    // Recupero palla a terra
+    if (!hero.hasBall && Math.hypot((hero.x + 20) - b.x, (hero.y + 25) - b.y) < 32) {
+      hero.hasBall = true;
+      b.active = false;
+      floatingTexts.push({ text: '⚽ PALLA RECUPERATA!', x: hero.x - 20, y: hero.y - 20, timer: 0.7, color: '#66ff88' });
+    }
+
+    if (!b.active || b.x < -50 || b.x > V_WIDTH + 50 || b.y > V_HEIGHT + 50) {
+      kickedBalls.splice(i, 1);
+    }
+  }
+
   // Aggiorna rivali
   for (let r of rivals) {
+    if (r.defeated) {
+      r.fallVy += 850 * dt;
+      r.y += r.fallVy * dt;
+      r.spin += 10 * dt;
+      continue;
+    }
+
     let speed = r.speed;
-    if (r.isPedemonte && Math.hypot(hero.x - r.x, hero.y - r.y) < 250) {
-      speed *= 1.4;
-      r.dir = (hero.x > r.x) ? 1 : -1;
+
+    if (r.isAquila) {
+      r.bubbleTimer = (r.bubbleTimer || 0) + dt;
+    }
+
+    if (r.isPedemonte || r.isCamorino) {
+      const onSameLevel = Math.abs((hero.y + 40) - (r.y + 40)) < 35;
+      if (onSameLevel) {
+        r.alertTimer = (r.alertTimer || 0) + dt;
+        if (r.alertTimer > 0.4) {
+          speed = r.speed * 1.35;
+          r.dir = (hero.x > r.x) ? 1 : -1;
+        }
+      } else {
+        r.alertTimer = 0;
+      }
     }
 
     r.x += r.dir * speed * dt;
@@ -676,10 +921,14 @@ function update(dt) {
     if (r.x > r.plat.x2 - 50) { r.x = r.plat.x2 - 50; r.dir = -1; }
     r.y = r.plat.getSurfaceY(r.x + 20) - 45;
 
-    // Collisione corpo a corpo
+    // Collisione con eroe
     if (hero.invulnTimer <= 0) {
-      if (Math.hypot((hero.x + 20) - (r.x + 20), (hero.y + 25) - (r.y + 25)) < 28) {
-        const msg = r.isAlex ? 'FALCIATO DA ALEX IL TRADITORE!' : (r.isPedemonte ? 'TRAVOLTO DAL N.11 DEL PEDEMONTE!' : `COLPITO DAL ${r.name.toUpperCase()}!`);
+      if (Math.hypot((hero.x + 20) - (r.x + 20), (hero.y + 25) - (r.y + 25)) < 26) {
+        let msg = `COLPITO DAL ${r.name.toUpperCase()}!`;
+        if (r.isAlex) msg = 'FALCIATO DA ALEX IL TRADITORE!';
+        if (r.isPedemonte) msg = 'TRAVOLTO DAL N.11 DEL PEDEMONTE!';
+        if (r.isCamorino) msg = 'ABBATTUTO DAL BOMBER DEL CAMORINO!';
+        if (r.isAquila) msg = 'FALCIATO DAL TERZINO DELL\'AQUILA!';
         hitHero(msg);
       }
     }
@@ -743,7 +992,7 @@ function update(dt) {
     }
   }
 
-  // Salto sopra ciabatte (+100) e rivali (+200 / 300 / 500 / 800)
+  // Salto sopra ciabatte (+100) e rivali
   if (!hero.isGrounded && hero.vy !== 0) {
     slippers.forEach(s => {
       if (!s.jumped && Math.abs(footX - s.x) < 32 && (footY - s.y) >= -65 && (footY - s.y) <= -4) {
@@ -755,7 +1004,7 @@ function update(dt) {
     });
 
     rivals.forEach(r => {
-      if (!r.jumped && Math.abs(footX - (r.x + 20)) < 36 && (footY - r.y) >= -75 && (footY - r.y) <= -5) {
+      if (!r.defeated && !r.jumped && Math.abs(footX - (r.x + 20)) < 36 && (footY - r.y) >= -75 && (footY - r.y) <= -5) {
         r.jumped = true;
         score += r.pts;
         playSound('score');
@@ -766,12 +1015,18 @@ function update(dt) {
 
   hero.x = Math.max(40, Math.min(V_WIDTH - 80, hero.x));
 
-  // Vittoria
-  if (hero.y <= 140 && hero.x <= 420) {
-    gameState = STATE_VICTORY;
-    score += bonusTimer;
-    if (score > highScore) highScore = score;
-    playSound('victory');
+  // VITTORIA / CAMBIO LIVELLO
+  if (hero.y <= platforms[0].y1 + 10 && hero.x <= 420) {
+    if (currentLevel === 1) {
+      gameState = STATE_LEVEL_CLEAR;
+      score += bonusTimer;
+      playSound('victory');
+    } else {
+      gameState = STATE_VICTORY;
+      score += bonusTimer;
+      if (score > highScore) highScore = score;
+      playSound('victory');
+    }
   }
 
   // Testi fluttuanti
@@ -792,7 +1047,7 @@ function hitHero(msg) {
     gameState = STATE_GAMEOVER;
   } else {
     hero.x = 160;
-    hero.y = 695 - 52;
+    hero.y = platforms[platforms.length - 1].y1 - 52;
     hero.vx = 0;
     hero.vy = 0;
     hero.isGrounded = true;
@@ -822,21 +1077,52 @@ function render() {
   const renzoSprite = renzo.isThrowing ? sprites.renzoThrow : sprites.renzoNormal;
   ctx.drawImage(renzoSprite, renzo.x, renzo.y, 86, 86);
 
-  // Rivali
+  // Rivali (FIX: Disegno sprite isolato per evitare che il testo finisca a sinistra!)
   rivals.forEach(r => {
+    // 1. Disegna solo lo sprite con l'eventuale flip dentro save/restore
     ctx.save();
-    if (r.dir < 0) {
-      ctx.translate(r.x + 45, r.y);
-      ctx.scale(-1, 1);
-      ctx.drawImage(r.sprite, 0, 0, 45, 45);
+    if (r.defeated) {
+      ctx.translate(r.x + 20, r.y + 20);
+      ctx.rotate(r.spin);
+      ctx.drawImage(r.sprite, -22, -22, 45, 45);
     } else {
-      ctx.drawImage(r.sprite, r.x, r.y, 45, 45);
+      if (r.dir < 0) {
+        ctx.translate(r.x + 45, r.y);
+        ctx.scale(-1, 1);
+        ctx.drawImage(r.sprite, 0, 0, 45, 45);
+      } else {
+        ctx.drawImage(r.sprite, r.x, r.y, 45, 45);
+      }
     }
     ctx.restore();
 
-    ctx.fillStyle = r.tagCol;
-    ctx.font = 'bold 13px Courier New';
-    ctx.fillText(r.name, r.x - 5, r.y - 8);
+    // 2. Disegna scritte e fumetti SEMPRE in coordinate assolute sopra la testa!
+    if (!r.defeated) {
+      const centerX = r.x + 22;
+
+      // Terzino dell'Aquila: Fumetto "LANCIAMI!"
+      if (r.isAquila) {
+        const cycle = Math.sin(r.bubbleTimer * 3.5);
+        if (cycle > -0.2) {
+          drawSpeechBubble(centerX, r.y - 20, "LANCIAMI!");
+        }
+      }
+
+      // Icona allerta '!' per Pedemonte e Camorino
+      if ((r.isPedemonte || r.isCamorino) && r.alertTimer > 0) {
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 22px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('! !', centerX, r.y - 12);
+      }
+
+      // Nome rivale centrato sulla testa
+      ctx.fillStyle = r.tagCol;
+      ctx.font = 'bold 13px Courier New';
+      ctx.textAlign = 'center';
+      ctx.fillText(r.name, centerX, r.y - 6);
+      ctx.textAlign = 'left'; // reset
+    }
   });
 
   // Ciabatte
@@ -845,6 +1131,15 @@ function render() {
     ctx.translate(s.x, s.y);
     ctx.rotate(s.rot);
     ctx.drawImage(sprites.slipper, -16, -16, 32, 32);
+    ctx.restore();
+  });
+
+  // Palloni calciati
+  kickedBalls.forEach(b => {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.rot);
+    ctx.drawImage(sprites.ball, -12, -12, 24, 24);
     ctx.restore();
   });
 
@@ -865,20 +1160,59 @@ function render() {
       ctx.drawImage(heroSprite, hero.x, hero.y, 48, 48);
     }
     ctx.restore();
+
+    // Palla al piede
+    if (hero.hasBall && !hero.isClimbing) {
+      const ballOffset = hero.facingRight ? 32 : -8;
+      const ballBounce = hero.isGrounded ? Math.abs(Math.sin(performance.now() * 0.015)) * 3 : 0;
+      ctx.drawImage(sprites.ball, hero.x + ballOffset, hero.y + 26 - ballBounce, 22, 22);
+    }
   }
 
-  // Testi fluttuanti (+100, ecc.)
+  // Testi fluttuanti
   floatingTexts.forEach(ft => {
+    ctx.save();
     ctx.fillStyle = ft.color;
     ctx.font = 'bold 20px Courier New';
-    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 4;
+    const clampedX = Math.max(30, Math.min(V_WIDTH - 280, ft.x));
+    ctx.fillText(ft.text, clampedX, ft.y);
+    ctx.restore();
   });
 
   drawHUD();
 
   if (gameState === STATE_BRIEFING) drawBriefing();
+  if (gameState === STATE_LEVEL_CLEAR) drawLevelClear();
   if (gameState === STATE_VICTORY) drawVictory();
   if (gameState === STATE_GAMEOVER) drawGameOver();
+}
+
+function drawSpeechBubble(x, y, text) {
+  ctx.font = 'bold 14px Courier New';
+  const tw = ctx.measureText(text).width + 12;
+  const th = 20;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(x - tw / 2, y - th, tw, th);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#000000';
+  ctx.strokeRect(x - tw / 2, y - th, tw, th);
+
+  // Triangolino freccia fumetto
+  ctx.beginPath();
+  ctx.moveTo(x - 4, y);
+  ctx.lineTo(x + 4, y);
+  ctx.lineTo(x, y + 5);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#cc0000';
+  ctx.textAlign = 'center';
+  ctx.fillText(text, x, y - 5);
+  ctx.textAlign = 'left';
 }
 
 function drawHUD() {
@@ -891,13 +1225,24 @@ function drawHUD() {
   ctx.fillStyle = '#00d2ff'; ctx.fillText('BONUS', 980, 30);
   ctx.fillStyle = '#ffe600'; ctx.fillText(String(bonusTimer).padStart(4, '0'), 980, 56);
 
-  // Vite
+  ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px Courier New';
+  ctx.fillText(`LIVELLO ${currentLevel}`, 535, 80);
+
+  // Status palla e vite
+  const ballStatus = hero.hasBall ? '⚽ PALLA AL PIEDE (CALCIA!)' : '⏳ RICARICA...';
+  const ballColor = hero.hasBall ? '#66ff88' : '#aaaaaa';
+  ctx.fillStyle = ballColor; ctx.font = 'bold 16px Courier New';
+  ctx.fillText(ballStatus, 50, V_HEIGHT - 45);
+
   ctx.fillStyle = '#ffffff'; ctx.font = '18px Courier New';
   ctx.fillText(`EROE: ${hero.name} | VITE: `, 50, V_HEIGHT - 20);
   for (let i = 0; i < lives; i++) {
     ctx.fillStyle = '#ff2222';
     ctx.fillRect(260 + i * 24, V_HEIGHT - 32, 18, 16);
   }
+
+  ctx.fillStyle = '#cccccc'; ctx.font = '14px Courier New';
+  ctx.fillText('TOCCA [⚽ CALCIA] O PREMI [K/ENTER] PER STENDERE I RIVALI!', 520, V_HEIGHT - 20);
 }
 
 function drawCharacterSelect() {
@@ -907,9 +1252,9 @@ function drawCharacterSelect() {
   ctx.fillText('IL COMANDANTE TAIRA ASSEGNERA LA MISSIONE A LUI!', 340, 100);
 
   const heroes = [
-    { name: 'JOAO', sub: 'L\'Eroe dai Ricci', img: sprites.joao, desc: 'EQUILIBRATO\n\n- Velocita: Buona\n- Salto: Calibrato\n- Fede nel Brissago' },
-    { name: 'CIUFFO', sub: 'Il Re del Gel', img: sprites.ciuffo, desc: 'SCATTANTE\n\n- Velocita: +15%\n- Salto: Rapido\n- Ciuffo perfetto' },
-    { name: 'LEON', sub: 'Guerriero Bandiera', img: sprites.leon, desc: 'GRINTA PURA\n\n- Super Salto: +25%\n- Passione Estrema\n- Bandiera del 1967' }
+    { name: 'JOAO', sub: 'L\'Eroe dai Ricci', img: sprites.joao, desc: 'EQUILIBRATO\n\n- Velocita: Buona\n- Salto: Calibrato\n- Tiro Preciso\n- Fede nel Brissago' },
+    { name: 'CIUFFO', sub: 'Il Re del Gel', img: sprites.ciuffo, desc: 'SCATTANTE\n\n- Velocita: +15%\n- Dribbling Veloce\n- Ciuffo sempre perfetto' },
+    { name: 'LEON', sub: 'Guerriero Bandiera', img: sprites.leon, desc: 'GRINTA PURA\n\n- Super Salto: +25%\n- Tiro Esplosivo\n- Bandiera del 1967' }
   ];
 
   heroes.forEach((h, i) => {
@@ -928,11 +1273,9 @@ function drawCharacterSelect() {
     ctx.fillStyle = '#60a5fa'; ctx.font = '14px Courier New';
     ctx.fillText(h.sub, cx + 75, 215);
 
-    // Box ritratto
     ctx.fillStyle = '#0a0f19'; ctx.fillRect(cx + 105, 235, 110, 110);
     ctx.drawImage(h.img, cx + 115, 245, 90, 90);
 
-    // Testo
     ctx.fillStyle = '#ffffff'; ctx.font = '16px Courier New';
     h.desc.split('\n').forEach((line, li) => {
       ctx.fillText(line, cx + 30, 390 + li * 22);
@@ -945,43 +1288,69 @@ function drawCharacterSelect() {
   });
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 20px Courier New';
-  ctx.fillText('[◀ / ▶] Cambia Eroe  |  [TOCCA SALTO o SPAZIO] Conferma e Ricevi Ordine', 220, V_HEIGHT - 35);
+  ctx.fillText('[◀ / ▶] Cambia Eroe  |  [TOCCA SALTO/CALCIA o SPAZIO] Conferma Eroe', 240, V_HEIGHT - 35);
 }
 
 function drawBriefing() {
-  drawBox(120, 180, 1040, 360, 'rgba(15, 20, 35, 0.96)', '#f5c828');
-  ctx.drawImage(sprites.taira, 150, 220, 100, 100);
+  drawBox(120, 160, 1040, 390, 'rgba(15, 20, 35, 0.96)', '#f5c828');
+  ctx.drawImage(sprites.taira, 150, 200, 100, 100);
 
   ctx.fillStyle = '#ffd700'; ctx.font = 'bold 26px Courier New';
-  ctx.fillText(`ORDINE DEL COMANDANTE TAIRA A SOLDATO ${hero.name}!`, 280, 230);
+  ctx.fillText(`ORDINE DEL COMANDANTE TAIRA A SOLDATO ${hero.name}!`, 280, 210);
 
-  ctx.fillStyle = '#ffffff'; ctx.font = '19px Courier New';
-  ctx.fillText(`'${hero.name}! LA MISSIONE E VINCERE LA QUINTA LEGA E RICONQUISTARE LA QUARTA!`, 280, 275);
-  ctx.fillText('PER RIUSCIRCI, DEVI SCALARE LE TRAVI E VINCERE LA FIDUCIA DI MISTER RENZO!', 280, 310);
-  ctx.fillText('ATTENTO AL CODEBORGO, AGLI ARAMAICI E AL NUMERO 11 DEL PEDEMONTE (ARRABBIATO!).', 280, 345);
+  ctx.fillStyle = '#ffffff'; ctx.font = '18px Courier New';
+  ctx.fillText(`'${hero.name}! LA MISSIONE E VINCERE LA QUINTA LEGA E RICONQUISTARE LA QUARTA!`, 280, 255);
+
+  ctx.fillStyle = '#66ff88';
+  ctx.fillText('PORTA IL PALLONE TRA I PIEDI: SE TROVI NEMICI SULLE TRAVI, CALCIA FORTE PER STENDERLI!', 280, 290);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('ATTENTO AL CODEBORGO, AGLI ARAMAICI E AL NUMERO 11 DEL PEDEMONTE (MOLTO ARRABBIATO!).', 280, 325);
 
   ctx.fillStyle = '#50c8ff';
-  ctx.fillText('E SULLA TRAVE PIU ALTA C\'E ALEX! CI HA TRADITI PER I VERZASCHESI!', 280, 385);
-  ctx.fillText('SCHIVA LE CIABATTE DI RENZO, SALTA I RIVALI E CONQUISTA LA FIDUCIA DEL MISTER!\'', 280, 420);
+  ctx.fillText('SULLA TRAVE PIU ALTA C\'E ALEX IL TRADITORE: COLPISCILO IN PIENO CON IL PALLONE!', 280, 365);
+  ctx.fillText('SCHIVA LE CIABATTE DI RENZO, SFONDA LE LINEE E CONQUISTA LA FIDUCIA DEL MISTER!\'', 280, 400);
 
   ctx.fillStyle = '#22c55e'; ctx.font = 'bold 22px Courier New';
-  ctx.fillText('TOCCA IL PULSANTE ROSSO O PREMI [SPAZIO] PER SALIRE SULLE TRAVI', 240, 500);
+  ctx.fillText('TOCCA IL PULSANTE VERDE/ROSSO O PREMI [SPAZIO] PER INIZIARE LA PARTITA', 200, 490);
+}
+
+function drawLevelClear() {
+  drawBox(140, 180, 1000, 360, 'rgba(10, 30, 45, 0.96)', '#00f0ff');
+  ctx.drawImage(sprites.taira, 170, 220, 100, 100);
+
+  ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 30px Courier New';
+  ctx.fillText('LIVELLO 1 SUPERATO! BRAVO ' + hero.name + '!', 290, 230);
+
+  ctx.fillStyle = '#ffffff'; ctx.font = '19px Courier New';
+  ctx.fillText('COMANDANTE TAIRA: \'OTTIMO LAVORO, MA NON E FINITA QUI!', 290, 280);
+  ctx.fillText('ORA ENTRIAMO NEL VERO INFERNO DELLA QUINTA LEGA: IL LIVELLO 2!', 290, 315);
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillText('CI SONO PIU PIANI E AVVERSARI PIU TOSTI:', 290, 360);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('- IL TERZINO DELL\'AQUILA CHE URLA "LANCIAMI!"', 300, 395);
+  ctx.fillText('- IL CAPITANO DELLO GNOSCA E IL PORTIERE DEL CHIRONICO', 300, 425);
+  ctx.fillText('- E ALL\'ULTIMO PIANO L\'ATTACCANTE DEL CAMORINO!\'', 300, 455);
+
+  ctx.fillStyle = '#22c55e'; ctx.font = 'bold 22px Courier New';
+  ctx.fillText('TOCCA IL PULSANTE ROSSO O PREMI [SPAZIO] PER ENTRARE NEL LIVELLO 2', 200, 505);
 }
 
 function drawVictory() {
   drawBox(160, 220, 960, 270, 'rgba(10, 40, 20, 0.96)', '#ffd700');
   ctx.fillStyle = '#ffd700'; ctx.font = 'bold 30px Courier New';
-  ctx.fillText(`VITTORIA! ${hero.name} HA CONQUISTATO RENZO!`, 240, 270);
+  ctx.fillText(`VITTORIA TOTALE! QUARTA LEGA RICONQUISTATA!`, 220, 270);
 
   ctx.fillStyle = '#ff6464'; ctx.font = 'bold 22px Courier New';
   ctx.fillText('MISTER RENZO (AC BRISSAGO):', 200, 320);
 
   ctx.fillStyle = '#ffffff'; ctx.font = '19px Courier New';
-  ctx.fillText(`'CHE RIFLESSI ${hero.name}! HAI BATTUTO CODEBORGO, ARAMAICI, PEDEMONTE`, 200, 355);
-  ctx.fillText('E PERSINO QUEL TRADITORE DI ALEX DEI VERZASCHESI!', 200, 385);
+  ctx.fillText(`'CHE BOMBA DI TIRO ${hero.name}! HAI MESSO K.O. CODEBORGO, ARAMAICI, PEDEMONTE,`, 200, 355);
+  ctx.fillText('ALEX, L\'AQUILA, LO GNOSCA, IL CHIRONICO E PERSINO IL CAMORINO!', 200, 385);
 
   ctx.fillStyle = '#ffd700';
-  ctx.fillText('CON TE E IL CAPITANO TAIRA LA QUARTA LEGA SARA NOSTRA!\'', 200, 420);
+  ctx.fillText('HAI LA MIA COMPLETA FIDUCIA: CON TE E TAIRA L\'AC BRISSAGO E IN QUARTA LEGA!\'', 200, 420);
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 20px Courier New';
   ctx.fillText('TOCCA LO SCHERMO O PREMI [SPAZIO] PER GIOCARE ANCORA', 310, 465);
@@ -996,8 +1365,8 @@ function drawGameOver() {
   ctx.fillText('COMANDANTE TAIRA:', 240, 340);
 
   ctx.fillStyle = '#ffffff'; ctx.font = '19px Courier New';
-  ctx.fillText(`'${hero.name}! NON POSSIAMO FARCI DERIDERE DAI VERZASCHESI E DA ALEX!`, 240, 375);
-  ctx.fillText('RIALZATI, SCHIVA QUELLE CIABATTE E RIPROVA PER L\'AC BRISSAGO!\'', 240, 405);
+  ctx.fillText(`'${hero.name}! NON MOLLARE ADESSO! L\'AC BRISSAGO HA BISOGNO DI TE!`, 240, 375);
+  ctx.fillText('CALCIA QUEL PALLONE CONTRO DI LORO E RIPROVA PER LA QUARTA LEGA!\'', 240, 405);
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 20px Courier New';
   ctx.fillText('TOCCA LO SCHERMO O PREMI [SPAZIO] PER RIPROVARE', 330, 455);
