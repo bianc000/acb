@@ -30,16 +30,23 @@ let score = 0;
 
 // RECORD E CLASSIFICA (ALBO D'ORO AC BRISSAGO)
 const DEFAULT_HIGHSCORES = [
-  { name: 'TAI', score: 14500, hero: 'TAIRA', level: 2, date: '01/11' },
-  { name: 'REN', score: 12800, hero: 'RENZO', level: 2, date: '02/11' },
-  { name: 'SAN', score: 9800, hero: 'SANDRO', level: 2, date: '03/11' },
-  { name: 'TOL', score: 8400, hero: 'TOLIC', level: 2, date: '03/11' },
-  { name: 'VAZ', score: 7600, hero: 'VAZ', level: 2, date: '04/11' },
-  { name: 'CIU', score: 6500, hero: 'CIUFFO', level: 2, date: '04/11' },
-  { name: 'LEO', score: 5800, hero: 'LEON', level: 2, date: '04/11' },
-  { name: 'JOA', score: 4900, hero: 'JOAO', level: 2, date: '05/11' },
-  { name: 'BAR', score: 1500, hero: 'BARSALINI', level: 1, date: '05/11' }
+  { name: 'BAR', score: 38500, hero: 'BARSALINI (3.5x)', level: 2, date: '01/11' },
+  { name: 'JOA', score: 26400, hero: 'JOAO (2.2x)', level: 2, date: '02/11' },
+  { name: 'TAI', score: 22000, hero: 'TAIRA (2.0x)', level: 2, date: '02/11' },
+  { name: 'LEO', score: 18500, hero: 'LEON (1.5x)', level: 2, date: '03/11' },
+  { name: 'REN', score: 16800, hero: 'RENZO (1.5x)', level: 2, date: '03/11' },
+  { name: 'CIU', score: 14200, hero: 'CIUFFO (1.0x)', level: 2, date: '04/11' },
+  { name: 'SAN', score: 12800, hero: 'SANDRO (1.0x)', level: 2, date: '04/11' },
+  { name: 'TOL', score: 10400, hero: 'TOLIC (1.0x)', level: 2, date: '05/11' },
+  { name: 'LIN', score: 8500, hero: 'LINDI (0.7x)', level: 2, date: '05/11' }
 ];
+
+function addScore(basePts) {
+  const mult = (hero && hero.scoreMult) ? hero.scoreMult : 1.0;
+  const pts = Math.round(basePts * mult);
+  score += pts;
+  return pts;
+}
 
 function loadHighScores() {
   try {
@@ -922,11 +929,15 @@ canvas.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 function handleGlobalKey(code) {
-  // Tasti C ed Escape: Ritorno immediato alla selezione personaggio da QUALSIASI punto del gioco con vite ricaricate a 3!
+  // Tasti C ed Escape: Ritorno immediato alla selezione personaggio da QUALSIASI punto del gioco con vite ricaricate a 3 e punteggio azzerato!
   if (code === 'KeyC' || code === 'Escape') {
     if (gameState !== STATE_SELECT) {
       lives = 3;
       isPaused = false;
+      score = 0;
+      hasCheckpoint = false;
+      checkpointLevel = 1;
+      checkpointScore = 0;
       gameState = STATE_SELECT;
       playSound('score');
       return;
@@ -986,6 +997,7 @@ function handleGlobalKey(code) {
       applyHeroSelection();
       lives = 3;
       currentLevel = 1;
+      score = 0;
       gameState = STATE_BRIEFING;
       playSound('jump');
     }
@@ -1087,6 +1099,10 @@ function handleGlobalKey(code) {
     }
   } else if (gameState === STATE_LEADERBOARD) {
     if (code === 'Space' || code === 'Enter' || code === 'KeyK' || code === 'KeyC' || code === 'Escape' || code === 'KeyL') {
+      score = 0;
+      hasCheckpoint = false;
+      checkpointLevel = 1;
+      checkpointScore = 0;
       gameState = STATE_SELECT;
       playSound('score');
       return;
@@ -1096,34 +1112,46 @@ function handleGlobalKey(code) {
 
 function applyHeroSelection() {
   if (selectedHeroIndex === 0) {
-    // CIUFFO (FACILE): Molto veloce, scattante, ottimo tiro
+    // CIUFFO (FACILE): Molto veloce, scattante, ottimo tiro (Punti x1.0)
     hero.name = 'CIUFFO';
     hero.speed = 280;
     hero.jumpForce = -385;
+    hero.scoreMult = 1.0;
+    hero.difficultyBonus = 1000;
   } else if (selectedHeroIndex === 1) {
-    // LEON (MEDIO): Meno veloce di Ciuffo ma ottimo salto e tiro potente
+    // LEON (MEDIO): Meno veloce di Ciuffo ma ottimo salto e tiro potente (Punti x1.5)
     hero.name = 'LEON';
     hero.speed = 235;
     hero.jumpForce = -400;
+    hero.scoreMult = 1.5;
+    hero.difficultyBonus = 2500;
   } else if (selectedHeroIndex === 2) {
-    // JOAO (DIFFICILE): Velocità moderata, tiro meno preciso
+    // JOAO (DIFFICILE): Velocità moderata, tiro meno preciso (Punti x2.2)
     hero.name = 'JOAO';
     hero.speed = 220;
     hero.jumpForce = -375;
+    hero.scoreMult = 2.2;
+    hero.difficultyBonus = 5000;
   } else if (selectedHeroIndex === 3) {
-    // BARSALINI (MOLTO DIFFICILE): Vittima prediletta di Renzo
+    // BARSALINI (MOLTO DIFFICILE): Vittima prediletta di Renzo (Punti x3.5 MASSIMO!)
     hero.name = 'BARSALINI';
     hero.speed = 225;
     hero.jumpForce = -365;
+    hero.scoreMult = 3.5;
+    hero.difficultyBonus = 10000;
   } else if (selectedHeroIndex === 5) {
-    // LINDI (MOLTO FACILE): Il cocco di Renzo
+    // LINDI (MOLTO FACILE): Il cocco di Renzo (Punti x0.7)
     hero.name = 'LINDI';
     hero.speed = 265;
     hero.jumpForce = -390;
+    hero.scoreMult = 0.7;
+    hero.difficultyBonus = 500;
   } else {
     hero.name = 'CIUFFO';
     hero.speed = 280;
     hero.jumpForce = -385;
+    hero.scoreMult = 1.0;
+    hero.difficultyBonus = 1000;
   }
 }
 
@@ -1836,7 +1864,7 @@ function update(dt) {
         renzo.isStunned = true;
         renzo.stunTimer = 4.5;
         renzo.isThrowing = false;
-        score += 1000;
+        const renzoEarned = addScore(1000);
         playSound('ko');
         createSlipperSparks(renzo.x, 50);
 
@@ -1890,8 +1918,8 @@ function update(dt) {
           if (r.isChironicoGk) koMsg = `GOL SOTTO L'INCROCIO AL CHIRONICO! +1400 PTS!`;
           if (r.name.includes('Gnosca')) koMsg = `CAPITANO DELLO GNOSCA STESO! +1100 PTS!`;
 
-          score += r.pts * 2;
-          floatingTexts.push({ text: koMsg, x: r.x - 40, y: r.y - 25, timer: 1.4, color: '#00ff88' });
+          const koEarned = addScore(r.pts * 2);
+          floatingTexts.push({ text: `${koMsg} +${koEarned} PTS!`, x: r.x - 40, y: r.y - 25, timer: 1.4, color: '#00ff88' });
           b.active = false;
           break;
         }
@@ -1905,9 +1933,9 @@ function update(dt) {
         if (s.active && Math.hypot(b.x - s.x, b.y - s.y) < 38) {
           s.active = false;
           slippers.splice(si, 1); // Rimuove IMMEDIATAMENTE la ciabatta dal gioco!
-          score += 150;
+          const slipEarned = addScore(150);
           playSound('score');
-          floatingTexts.push({ text: '💥 CIABATTA POLVERIZZATA! +150', x: s.x - 30, y: s.y - 20, timer: 0.9, color: '#ffea00' });
+          floatingTexts.push({ text: `💥 CIABATTA +${slipEarned}`, x: s.x - 30, y: s.y - 20, timer: 0.9, color: '#ffea00' });
           createSlipperSparks(s.x, s.y);
           // NOTA BENE: b.active rimane TRUE, la palla continua e travolge altre ciabatte!
         }
@@ -2062,18 +2090,18 @@ function update(dt) {
     slippers.forEach(s => {
       if (!s.jumped && Math.abs(footX - s.x) < 32 && (footY - s.y) >= -55 && (footY - s.y) <= -2) {
         s.jumped = true;
-        score += 100;
+        const pts = addScore(100);
         playSound('score');
-        floatingTexts.push({ text: '+100', x: s.x, y: s.y - 20, timer: 0.9, color: '#ffea00' });
+        floatingTexts.push({ text: `+${pts}`, x: s.x, y: s.y - 20, timer: 0.9, color: '#ffea00' });
       }
     });
 
     rivals.forEach(r => {
       if (!r.defeated && !r.jumped && Math.abs(footX - (r.x + 20)) < 36 && (footY - r.y) >= -65 && (footY - r.y) <= -5) {
         r.jumped = true;
-        score += r.pts;
+        const pts = addScore(r.pts);
         playSound('score');
-        floatingTexts.push({ text: `+${r.pts}`, x: r.x + 10, y: r.y - 20, timer: 0.9, color: '#00ffcc' });
+        floatingTexts.push({ text: `+${pts}`, x: r.x + 10, y: r.y - 20, timer: 0.9, color: '#00ffcc' });
       }
     });
   }
@@ -2115,14 +2143,18 @@ function update(dt) {
     if (goalState.animTimer <= 0) {
       if (currentLevel === 1) {
         gameState = STATE_LEVEL_CLEAR;
-        score += bonusTimer;
+        const timeBonus = addScore(bonusTimer);
         hasCheckpoint = true;
         checkpointLevel = 2;
         checkpointScore = score;
+        floatingTexts.push({ text: `BONUS TEMPO LIV 1: +${timeBonus} PTS!`, x: V_WIDTH / 2 - 140, y: 320, timer: 2.2, color: '#00f0ff' });
       } else {
         gameState = STATE_VICTORY;
-        score += bonusTimer;
+        const timeBonus = addScore(bonusTimer);
+        const diffBonus = hero.difficultyBonus || 1000;
+        score += diffBonus;
         if (score > highScore) highScore = score;
+        floatingTexts.push({ text: `BONUS TEMPO: +${timeBonus} | EROE: +${diffBonus} PTS!`, x: V_WIDTH / 2 - 170, y: 320, timer: 2.8, color: '#ffd700' });
       }
     }
   }
@@ -2149,7 +2181,7 @@ function triggerGoal(ball) {
 
   playSound('whistle');
   playSound('victory');
-  score += 3000;
+  const goalEarned = addScore(3000);
 
   // Esplosione coriandoli / particelle rete
   goalState.netParticles = [];
@@ -2701,8 +2733,9 @@ function drawHUD() {
   ctx.fillStyle = ballColor; ctx.font = 'bold 16px Courier New';
   ctx.fillText(ballStatus, 50, V_HEIGHT - 45);
 
+  const heroMultStr = hero.scoreMult ? ` (x${hero.scoreMult})` : '';
   ctx.fillStyle = '#ffffff'; ctx.font = '18px Courier New';
-  ctx.fillText(`EROE: ${hero.name} | VITE: `, 50, V_HEIGHT - 20);
+  ctx.fillText(`EROE: ${hero.name}${heroMultStr} | VITE: `, 50, V_HEIGHT - 20);
   for (let i = 0; i < lives; i++) {
     ctx.fillStyle = '#ff2222';
     ctx.fillRect(260 + i * 24, V_HEIGHT - 32, 18, 16);
@@ -2722,6 +2755,7 @@ function drawCharacterSelect() {
     {
       name: 'CIUFFO',
       badge: 'Facile',
+      multText: 'PUNTI x1.0',
       badgeColor: '#22c55e',
       motto: 'Nessuno si ricorda il suo vero nome',
       charKey: 'ciuffo',
@@ -2730,6 +2764,7 @@ function drawCharacterSelect() {
     {
       name: 'LEON',
       badge: 'Medio',
+      multText: 'PUNTI x1.5',
       badgeColor: '#38bdf8',
       motto: 'Si okay ma tuo fratello?',
       charKey: 'leon',
@@ -2738,6 +2773,7 @@ function drawCharacterSelect() {
     {
       name: 'JOAO',
       badge: 'Difficile',
+      multText: 'PUNTI x2.2',
       badgeColor: '#f97316',
       motto: 'swag',
       charKey: 'joao',
@@ -2746,6 +2782,7 @@ function drawCharacterSelect() {
     {
       name: 'BARSALINI',
       badge: 'Molto difficile',
+      multText: 'PUNTI x3.5 ★',
       badgeColor: '#ef4444',
       motto: 'Il bersaglio di Renzo',
       charKey: 'barsalini',
@@ -2754,6 +2791,7 @@ function drawCharacterSelect() {
     {
       name: 'CARLON',
       badge: '?',
+      multText: '???',
       badgeColor: '#a855f7',
       motto: 'Ha altri impegni...',
       charKey: 'carlon',
@@ -2762,6 +2800,7 @@ function drawCharacterSelect() {
     {
       name: 'LINDI',
       badge: 'Molto facile',
+      multText: 'PUNTI x0.7',
       badgeColor: '#10b981',
       motto: 'Il cocco di Renzo',
       charKey: 'lindi',
@@ -2802,6 +2841,13 @@ function drawCharacterSelect() {
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.fillText(h.badge, pillX + pillW / 2, pillY + 15);
+
+    // Badge Moltiplicatore Punti
+    if (h.multText && h.multText !== '???') {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 11px Courier New';
+      ctx.fillText(h.multText, cx + cardW / 2, pillY + 33);
+    }
 
     // Nome Eroe
     ctx.fillStyle = isSel ? '#ffd700' : '#ffffff';
@@ -3389,10 +3435,11 @@ function confirmHighScore() {
   const today = new Date();
   const dateStr = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth() + 1).padStart(2, '0');
 
+  const heroTag = hero.scoreMult ? `${hero.name} (${hero.scoreMult}x)` : hero.name;
   const newEntry = {
     name: nickname,
     score: score,
-    hero: hero.name,
+    hero: heroTag,
     level: currentLevel,
     date: dateStr
   };
@@ -3404,6 +3451,12 @@ function confirmHighScore() {
   lastPlayerRank = highScores.findIndex(e => e === newEntry);
   saveHighScores(highScores);
   highScore = highScores[0] ? highScores[0].score : score;
+
+  // AZZERA COMPLETAMENTE IL PUNTEGGIO E I CHECKPOINT DOPO L'INSERIMENTO
+  score = 0;
+  hasCheckpoint = false;
+  checkpointLevel = 1;
+  checkpointScore = 0;
 
   playSound('victory');
   gameState = STATE_LEADERBOARD;
