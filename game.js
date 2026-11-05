@@ -19,6 +19,7 @@ const STATE_PLAYING = 2;
 const STATE_LEVEL_CLEAR = 3;
 const STATE_VICTORY = 4;
 const STATE_GAMEOVER = 5;
+const STATE_UNDERGROUND = 6;
 
 let gameState = STATE_SELECT;
 let currentLevel = 1; // Livello 1 o Livello 2
@@ -36,6 +37,43 @@ let carlonNoticeTimer = 0;
 let hasCheckpoint = false;
 let checkpointLevel = 1;
 let checkpointScore = 0;
+
+// Compagni di squadra nel Club/Spogliatoio segreto sotterraneo
+let undergroundCharacters = [
+  {
+    name: 'SANDRO',
+    x: 400,
+    y: 516,
+    quote: 'Eh deh ci sei anche te??',
+    tagCol: '#4ade80',
+    charKey: 'sandro',
+    pose: 'idle',
+    talkTimer: 0,
+    speechBubbleTimer: 0
+  },
+  {
+    name: 'TOLIC',
+    x: 710,
+    y: 508,
+    quote: 'sushi?',
+    tagCol: '#38bdf8',
+    charKey: 'tolic',
+    pose: 'idle',
+    talkTimer: 0,
+    speechBubbleTimer: 0
+  },
+  {
+    name: 'VAZ',
+    x: 1010,
+    y: 514,
+    quote: 'Oceano?',
+    tagCol: '#f43f5e',
+    charKey: 'vaz',
+    pose: 'idle',
+    talkTimer: 0,
+    speechBubbleTimer: 0
+  }
+];
 
 // WEB AUDIO SYNTH
 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -845,11 +883,30 @@ canvas.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 function handleGlobalKey(code) {
-  // Tasto P per mettere in PAUSA la partita
+  // Tasti C ed Escape: Ritorno immediato alla selezione personaggio da QUALSIASI punto del gioco con vite ricaricate a 3!
+  if (code === 'KeyC' || code === 'Escape') {
+    if (gameState !== STATE_SELECT) {
+      lives = 3;
+      isPaused = false;
+      gameState = STATE_SELECT;
+      playSound('score');
+      return;
+    }
+  }
+
+  // Tasto P per mettere in PAUSA la partita o lo spogliatoio
   if (code === 'KeyP') {
-    if (gameState === STATE_PLAYING) {
+    if (gameState === STATE_PLAYING || gameState === STATE_UNDERGROUND) {
       isPaused = !isPaused;
       playSound('score');
+      return;
+    }
+  }
+
+  // Interazione nello Spogliatoio Sotterraneo (K, X, E, Spazio, Invio o tocco su Calcia)
+  if (gameState === STATE_UNDERGROUND) {
+    if (!isPaused && (code === 'KeyK' || code === 'KeyX' || code === 'KeyE' || code === 'Space' || code === 'Enter')) {
+      interactWithUndergroundCharacters();
       return;
     }
   }
@@ -1098,6 +1155,10 @@ requestAnimationFrame(gameLoop);
 function update(dt) {
   if (gameState === STATE_SELECT) {
     if (carlonNoticeTimer > 0) carlonNoticeTimer -= dt;
+    return;
+  }
+  if (gameState === STATE_UNDERGROUND) {
+    if (!isPaused) updateUnderground(dt);
     return;
   }
   if (gameState !== STATE_PLAYING || isPaused) return;
@@ -1813,6 +1874,11 @@ function update(dt) {
   // Scale
   let nearLadder = ladders.find(l => l.canClimb(footX, footY));
   if (nearLadder && (wantsUp || wantsDown)) {
+    // Se siamo a terra (quota 695) e vogliamo scendere dalla scala, apriamo lo spogliatoio segreto!
+    if (wantsDown && footY >= 685 && nearLadder.bottomY >= 690) {
+      enterUndergroundRoom();
+      return;
+    }
     hero.isClimbing = true;
     hero.isGrounded = false;
     hero.x = nearLadder.x - 24;
@@ -1821,7 +1887,13 @@ function update(dt) {
   if (hero.isClimbing) {
     hero.vy = 0;
     if (wantsUp) hero.y -= 160 * dt;
-    if (wantsDown) hero.y += 160 * dt;
+    if (wantsDown) {
+      hero.y += 160 * dt;
+      if (footY >= 690 && nearLadder && nearLadder.bottomY >= 690) {
+        enterUndergroundRoom();
+        return;
+      }
+    }
     if (!nearLadder || footY < nearLadder.topY - 14 || footY > nearLadder.bottomY + 14) {
       hero.isClimbing = false;
       hero.isGrounded = true;
@@ -1890,6 +1962,12 @@ function update(dt) {
   }
 
   hero.x = Math.max(40, Math.min(V_WIDTH - 80, hero.x));
+
+  // Caduta sotto il piano terra: entra nello spogliatoio segreto invece di cadere all'infinito
+  if (hero.y > 670 || footY > 715) {
+    enterUndergroundRoom();
+    return;
+  }
 
   // SULLA CIMA: Se l'eroe non ha la palla, forniscila subito per tirare in porta!
   if (hero.y <= platforms[0].y1 + 10 && !goalState.scored) {
@@ -2109,9 +2187,30 @@ function render() {
     return;
   }
 
+  if (gameState === STATE_UNDERGROUND) {
+    renderUnderground();
+    if (isPaused) drawPauseScreen();
+    return;
+  }
+
   // Piattaforme e scale verdi da campo da calcio
   platforms.forEach(p => p.draw(ctx));
   ladders.forEach(l => l.draw(ctx));
+
+  // Botola segreta per scendere nello spogliatoio dell'AC Brissago (quota 695 a destra, scala x = 1100)
+  ctx.save();
+  ctx.fillStyle = '#f59e0b';
+  ctx.fillRect(1084, 694, 32, 6);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(1088, 696, 24, 2);
+  if (hero.y >= 610 && Math.abs((hero.x + 24) - 1100) < 65) {
+    const pulse = Math.abs(Math.sin(performance.now() * 0.007));
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 13px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('▼ SCENDI NELLO SPOGLIATOIO ▼', 1100, 680 - pulse * 4);
+  }
+  ctx.restore();
 
   // Porta da calcio in cima
   drawSoccerGoal(ctx, 70, 25, 120, 75, goalState.scored, goalState.bulge);
@@ -2391,7 +2490,7 @@ function render() {
   if (gameState === STATE_GAMEOVER) drawGameOver();
 
   // Schermata di Pausa (tasto P)
-  if (isPaused && gameState === STATE_PLAYING) {
+  if (isPaused && (gameState === STATE_PLAYING || gameState === STATE_UNDERGROUND)) {
     drawPauseScreen();
   }
 }
@@ -2419,11 +2518,12 @@ function drawPauseScreen() {
 
   ctx.fillStyle = '#ffd700';
   ctx.font = '17px Courier New';
-  ctx.fillText(`EROE IN CAMPO: ${hero.name} | LIVELLO: ${currentLevel} | PUNTI: ${score}`, V_WIDTH / 2, by + 165);
+  const locName = (gameState === STATE_UNDERGROUND) ? 'SPOGLIATOIO SEGRETO' : `LIVELLO ${currentLevel}`;
+  ctx.fillText(`EROE: ${hero.name} | ${locName} | PUNTI: ${score}`, V_WIDTH / 2, by + 165);
 
   ctx.fillStyle = '#4ade80';
   ctx.font = '14px Courier New';
-  ctx.fillText('⚽ SUGGERIMENTO: La palla travolge più ciabatte in linea retta!', V_WIDTH / 2, by + 205);
+  ctx.fillText('[C / ESC] Menu Selezione Eroi  |  [P] Continua Partita', V_WIDTH / 2, by + 205);
   ctx.textAlign = 'left';
 
   ctx.restore();
@@ -2482,7 +2582,7 @@ function drawHUD() {
   }
 
   ctx.fillStyle = '#cccccc'; ctx.font = '14px Courier New';
-  ctx.fillText('TOCCA [⚽ CALCIA] O PREMI [K/ENTER] PER STENDERE I RIVALI!', 520, V_HEIGHT - 20);
+  ctx.fillText('[C / ESC] MENU EROI  |  [P] PAUSA  |  [⚽ CALCIA] K / INVIO', 440, V_HEIGHT - 20);
 }
 
 function drawCharacterSelect() {
@@ -2684,7 +2784,14 @@ function drawCharacterSelect() {
 
 function drawBriefing() {
   drawBox(120, 150, 1040, 410, 'rgba(15, 20, 35, 0.96)', '#f5c828');
-  ctx.drawImage(sprites.taira, 150, 190, 100, 100);
+  if (sprites.characters && sprites.characters.taira && sprites.characters.taira.salute) {
+    const tImg = sprites.characters.taira.salute;
+    const tH = 150;
+    const tW = Math.round(tH * (tImg.w / tImg.h));
+    ctx.drawImage(tImg.img, 140, 175, tW, tH);
+  } else {
+    ctx.drawImage(sprites.taira, 150, 190, 100, 100);
+  }
 
   ctx.fillStyle = '#ffd700'; ctx.font = 'bold 26px Courier New';
   ctx.fillText(`ORDINE DEL COMANDANTE TAIRA A SOLDATO ${hero.name}!`, 280, 200);
@@ -2708,7 +2815,14 @@ function drawBriefing() {
 
 function drawLevelClear() {
   drawBox(140, 170, 1000, 380, 'rgba(10, 30, 45, 0.96)', '#00f0ff');
-  ctx.drawImage(sprites.taira, 170, 210, 100, 100);
+  if (sprites.characters && sprites.characters.taira && sprites.characters.taira.point1) {
+    const tImg = sprites.characters.taira.point1;
+    const tH = 150;
+    const tW = Math.round(tH * (tImg.w / tImg.h));
+    ctx.drawImage(tImg.img, 150, 190, tW, tH);
+  } else {
+    ctx.drawImage(sprites.taira, 170, 210, 100, 100);
+  }
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 30px Courier New';
   ctx.fillText('GOOOOOOOL! LIVELLO 1 CONQUISTATO! BRAVO ' + hero.name + '!', 290, 220);
@@ -2749,6 +2863,12 @@ function drawVictory() {
 
 function drawGameOver() {
   drawBox(180, 220, 920, 275, 'rgba(50, 10, 10, 0.96)', '#ff2222');
+  if (sprites.characters && sprites.characters.taira && sprites.characters.taira.radio) {
+    const tImg = sprites.characters.taira.radio;
+    const tH = 140;
+    const tW = Math.round(tH * (tImg.w / tImg.h));
+    ctx.drawImage(tImg.img, 195, 275, tW, tH);
+  }
   ctx.fillStyle = '#ff3333'; ctx.font = 'bold 32px Courier New'; ctx.textAlign = 'center';
   ctx.fillText('MISSIONE FALLITA!', V_WIDTH / 2, 270);
 
@@ -2777,4 +2897,355 @@ function drawBox(x, y, w, h, bg, border) {
   ctx.lineWidth = 4;
   ctx.strokeStyle = border;
   ctx.strokeRect(x, y, w, h);
+}
+
+
+// -------------------------------------------------------------------------
+// SPOGLIATOIO SEGRETO / CLUB AC BRISSAGO (Sandro, Tolic, Vaz)
+// -------------------------------------------------------------------------
+
+function enterUndergroundRoom() {
+  gameState = STATE_UNDERGROUND;
+  isPaused = false;
+  hero.x = 140 - 24;
+  hero.y = 120; // Sta scendendo dalla scala in alto a sinistra
+  hero.vx = 0;
+  hero.vy = 0;
+  hero.isClimbing = true;
+  hero.isGrounded = false;
+  hero.facingRight = true;
+  playSound('jump');
+  floatingTexts.push({ text: 'SALA TATTICA & SPOGLIATOIO SEGRETO AC BRISSAGO!', x: 260, y: 70, timer: 3.0, color: '#ffd700' });
+}
+
+function exitUndergroundRoom() {
+  gameState = STATE_PLAYING;
+  hero.x = 1100 - 24;
+  hero.y = platforms[platforms.length - 1].y1 - 52;
+  hero.vx = 0;
+  hero.vy = 0;
+  hero.isGrounded = true;
+  hero.isClimbing = false;
+  hero.facingRight = false;
+  playSound('jump');
+  floatingTexts.push({ text: 'RITORNO AL CAMPO DI CALCIO!', x: hero.x - 40, y: hero.y - 20, timer: 2.0, color: '#22c55e' });
+}
+
+function interactWithUndergroundCharacters() {
+  const heroCenterX = hero.x + 24;
+  for (let c of undergroundCharacters) {
+    if (Math.abs(heroCenterX - c.x) < 85) {
+      c.speechBubbleTimer = 3.5;
+      c.talkTimer = 2.0;
+      if (c.charKey === 'sandro') {
+        c.pose = (c.pose === 'salute') ? 'thumbs_up' : 'salute';
+      } else if (c.charKey === 'tolic') {
+        c.pose = (c.pose === 'thumbs_up') ? 'think' : 'thumbs_up';
+      } else if (c.charKey === 'vaz') {
+        c.pose = (c.pose === 'flex') ? 'talk' : 'flex';
+      }
+      playSound('score');
+      floatingTexts.push({ text: `${c.name}: "${c.quote}"`, x: c.x - 70, y: 480, timer: 2.5, color: c.tagCol });
+      return true;
+    }
+  }
+  return false;
+}
+
+function updateUnderground(dt) {
+  let moveX = 0;
+  if (keys['ArrowLeft'] || keys['KeyA']) { moveX -= 1; hero.facingRight = false; }
+  if (keys['ArrowRight'] || keys['KeyD']) { moveX += 1; hero.facingRight = true; }
+
+  const wantsUp = keys['ArrowUp'] || keys['KeyW'];
+  const wantsDown = keys['ArrowDown'] || keys['KeyS'];
+  const wantsJump = keys['Space'];
+
+  const footX = hero.x + 24;
+  const roomLadderX = 140;
+  const isNearRoomLadder = Math.abs(footX - roomLadderX) < 32;
+
+  if (isNearRoomLadder && (wantsUp || wantsDown)) {
+    hero.isClimbing = true;
+    hero.isGrounded = false;
+    hero.x = roomLadderX - 24;
+  }
+
+  const floorY = 612;
+  const heroGroundedY = floorY - 52;
+
+  if (hero.isClimbing) {
+    hero.vy = 0;
+    if (wantsUp) hero.y -= 160 * dt;
+    if (wantsDown) hero.y += 160 * dt;
+
+    // Se sale fino in cima alla scala (y <= 85), risale al campo principale!
+    if (hero.y <= 85) {
+      exitUndergroundRoom();
+      return;
+    }
+
+    // Se scende fino al pavimento dello spogliatoio
+    if (hero.y >= heroGroundedY) {
+      hero.y = heroGroundedY;
+      hero.isClimbing = false;
+      hero.isGrounded = true;
+    }
+  } else {
+    hero.x += moveX * hero.speed * dt;
+
+    if (hero.isGrounded && wantsJump) {
+      hero.vy = hero.jumpForce;
+      hero.isGrounded = false;
+      playSound('jump');
+    }
+
+    if (!hero.isGrounded) {
+      hero.vy += 950 * dt;
+      hero.y += hero.vy * dt;
+    }
+
+    if (hero.y >= heroGroundedY) {
+      hero.y = heroGroundedY;
+      hero.vy = 0;
+      hero.isGrounded = true;
+    }
+  }
+
+  hero.x = Math.max(60, Math.min(V_WIDTH - 80, hero.x));
+
+  // Gestione timer e pose compagni
+  for (let c of undergroundCharacters) {
+    if (c.speechBubbleTimer > 0) c.speechBubbleTimer -= dt;
+    if (c.talkTimer > 0) {
+      c.talkTimer -= dt;
+      if (c.talkTimer <= 0) c.pose = 'idle';
+    }
+
+    // Se il giocatore cammina vicinissimo (<= 50px) e non c'è ancora un fumetto attivo, fai partire il dialogo
+    if (Math.abs(footX - c.x) < 50 && c.speechBubbleTimer <= 0) {
+      interactWithUndergroundCharacters();
+    }
+  }
+
+  // Testi fluttuanti nello spogliatoio
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const ft = floatingTexts[i];
+    ft.timer -= dt;
+    ft.y -= 30 * dt;
+    if (ft.timer <= 0) floatingTexts.splice(i, 1);
+  }
+}
+
+function renderUnderground() {
+  ctx.save();
+
+  // Sfondo stanza sotterranea / Spogliatoio & Club
+  ctx.fillStyle = '#0a0d18';
+  ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+  // Muro a blocchi / pannelli sportivi blu scuro
+  ctx.fillStyle = '#111827';
+  ctx.fillRect(40, 70, V_WIDTH - 80, 542);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#1e293b';
+  ctx.strokeRect(40, 70, V_WIDTH - 80, 542);
+
+  // Texture mattoni / pannelli
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.lineWidth = 1;
+  for (let y = 110; y < 610; y += 45) {
+    ctx.beginPath();
+    ctx.moveTo(40, y);
+    ctx.lineTo(V_WIDTH - 40, y);
+    ctx.stroke();
+  }
+
+  // Insegna luminosa Club AC Brissago
+  ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+  ctx.fillRect(V_WIDTH / 2 - 280, 85, 560, 48);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#ef4444';
+  ctx.strokeRect(V_WIDTH / 2 - 280, 85, 560, 48);
+
+  ctx.fillStyle = '#f87171';
+  ctx.font = 'bold 22px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('⚽ AC BRISSAGO - CLUB SEGRETO & SPOGLIATOIO TATTICO ⚽', V_WIDTH / 2, 117);
+
+  // Lavagna tattica degli schemi (a sinistra)
+  ctx.fillStyle = '#064e3b';
+  ctx.fillRect(230, 160, 170, 120);
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#78350f';
+  ctx.strokeRect(230, 160, 170, 120);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 12px Courier New';
+  ctx.fillText('MODULO: 4-3-3', 315, 185);
+  ctx.fillStyle = '#a7f3d0';
+  ctx.font = '11px Courier New';
+  ctx.fillText("TUTTI ALL'ATTACCO!", 315, 205);
+  ctx.fillText('RENZO: NO CIABATTE', 315, 225);
+  ctx.fillText('GOL = QUARTA LEGA', 315, 245);
+  ctx.strokeStyle = '#fde047';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(315, 260, 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Banchina spogliatoio e armadietti
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(490, 260, 200, 240);
+  ctx.strokeStyle = '#334155';
+  ctx.strokeRect(490, 260, 200, 240);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 12px Courier New';
+  ctx.fillText('ARMADIETTI', 590, 285);
+  ctx.fillText('SANDRO #7', 590, 315);
+  ctx.fillText('TOLIC #4', 590, 340);
+  ctx.fillText('VAZ #10', 590, 365);
+  ctx.fillText('BARSALINI #11', 590, 390);
+
+  // Vetrina dei Trofei (a destra)
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(820, 170, 170, 110);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ffd700';
+  ctx.strokeRect(820, 170, 170, 110);
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 13px Courier New';
+  ctx.fillText('🏆 BACHECA TROFEI 🏆', 905, 200);
+  ctx.fillStyle = '#fef08a';
+  ctx.font = '11px Courier New';
+  ctx.fillText('COPA TICINO 2023', 905, 228);
+  ctx.fillText('SOGNO QUARTA LEGA', 905, 252);
+
+  // Pavimento in parquet sportivo e prato rasato
+  ctx.fillStyle = '#78350f';
+  ctx.fillRect(40, 612, V_WIDTH - 80, 14);
+  ctx.fillStyle = '#15803d';
+  ctx.fillRect(40, 612, V_WIDTH - 80, 5);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(40, 612, V_WIDTH - 80, 2);
+
+  // Scala metallica per risalire (a sinistra: x = 140)
+  for (let y = 70; y < 612; y += 16) {
+    ctx.drawImage(sprites.ladder, 140 - 12, y);
+  }
+
+  // Portola / botola illuminata d'uscita in alto
+  ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+  ctx.fillRect(110, 65, 60, 16);
+  ctx.fillStyle = '#22c55e';
+  ctx.font = 'bold 13px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('▲ USCITA AL CAMPO', 140, 55);
+
+  // Disegno compagni di squadra (Sandro, Tolic, Vaz)
+  for (let c of undergroundCharacters) {
+    let charImgObj = null;
+    if (sprites.characters && sprites.characters[c.charKey]) {
+      charImgObj = sprites.characters[c.charKey][c.pose] || sprites.characters[c.charKey].idle;
+    }
+
+    const drawH = 96;
+    const drawY = 612 - drawH;
+
+    if (charImgObj && charImgObj.img) {
+      const drawW = Math.round(drawH * (charImgObj.w / charImgObj.h));
+      const drawX = c.x - drawW / 2;
+      ctx.drawImage(charImgObj.img, drawX, drawY, drawW, drawH);
+    } else {
+      ctx.fillStyle = c.tagCol;
+      ctx.fillRect(c.x - 20, drawY, 40, drawH);
+    }
+
+    // Badge Nome sopra la testa
+    ctx.fillStyle = c.tagCol;
+    ctx.font = 'bold 16px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(c.name, c.x, drawY - 14);
+
+    // Fumetto con frase se attivo
+    if (c.speechBubbleTimer > 0) {
+      drawSpeechBubble(c.x, drawY - 26, c.quote);
+    } else {
+      // Suggerimento di interazione se vicino
+      const heroCenterX = hero.x + 24;
+      if (Math.abs(heroCenterX - c.x) < 70) {
+        const pulse = Math.abs(Math.sin(performance.now() * 0.008));
+        ctx.fillStyle = '#fde047';
+        ctx.font = 'bold 12px Courier New';
+        ctx.fillText('💬 [⚽ / INVIO] PARLA', c.x, drawY - 26 - pulse * 4);
+      }
+    }
+  }
+
+  // Disegno Eroe
+  let heroCharKey = (selectedHeroIndex === 0 || hero.name === 'CIUFFO') ? 'ciuffo'
+    : (selectedHeroIndex === 1 || hero.name === 'LEON') ? 'leon'
+    : (selectedHeroIndex === 2 || hero.name === 'JOAO') ? 'joao'
+    : (selectedHeroIndex === 3 || hero.name === 'BARSALINI') ? 'barsalini'
+    : (selectedHeroIndex === 4 || hero.name === 'CARLON') ? 'carlon'
+    : 'lindi';
+
+  let heroImgObj = null;
+  if (sprites.characters && sprites.characters[heroCharKey]) {
+    const charSprites = sprites.characters[heroCharKey];
+    if (hero.isClimbing) {
+      heroImgObj = charSprites.climb || charSprites.idle;
+    } else if (keys['ArrowLeft'] || keys['ArrowRight'] || keys['KeyA'] || keys['KeyD']) {
+      const runFrame = Math.floor(performance.now() * 0.008) % 2;
+      heroImgObj = (runFrame === 0) ? charSprites.run1 : (charSprites.run2 || charSprites.run1);
+    } else {
+      heroImgObj = charSprites.idle;
+    }
+  }
+
+  const hDrawH = 50;
+  const hDrawW = heroImgObj ? Math.round(hDrawH * (heroImgObj.w / heroImgObj.h)) : 48;
+  const hDrawY = hero.y + 48 - hDrawH;
+  const hDrawX = hero.x + (48 - hDrawW) / 2;
+
+  ctx.save();
+  if (!hero.facingRight) {
+    ctx.translate(hero.x + 24, hDrawY + hDrawH / 2);
+    ctx.scale(-1, 1);
+    if (heroImgObj && heroImgObj.img) {
+      ctx.drawImage(heroImgObj.img, -hDrawW / 2, -hDrawH / 2, hDrawW, hDrawH);
+    } else {
+      ctx.drawImage(sprites.ciuffo, -24, -24, 48, 48);
+    }
+  } else {
+    if (heroImgObj && heroImgObj.img) {
+      ctx.drawImage(heroImgObj.img, hDrawX, hDrawY, hDrawW, hDrawH);
+    } else {
+      ctx.drawImage(sprites.ciuffo, hero.x, hero.y, 48, 48);
+    }
+  }
+  ctx.restore();
+
+  // Testi fluttuanti nello spogliatoio
+  floatingTexts.forEach(ft => {
+    ctx.fillStyle = ft.color;
+    ctx.font = 'bold 20px Courier New';
+    ctx.shadowColor = '#000000';
+    ctx.shadowBlur = 4;
+    const clampedX = Math.max(30, Math.min(V_WIDTH - 280, ft.x));
+    ctx.fillText(ft.text, clampedX, ft.y);
+  });
+
+  // Barra di stato e comandi in basso
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, V_HEIGHT - 40, V_WIDTH, 40);
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 15px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('SPOGLIATOIO SEGRETO | EROE: ' + hero.name + ' (VITE: ' + lives + ')', 30, V_HEIGHT - 16);
+  ctx.fillStyle = '#38bdf8';
+  ctx.textAlign = 'right';
+  ctx.fillText('[C / ESC] MENU SELEZIONE EROI  |  [P] PAUSA  |  [▲ SCALA A SINISTRA] TORNA AL CAMPO', V_WIDTH - 30, V_HEIGHT - 16);
+
+  ctx.restore();
 }
