@@ -20,12 +20,51 @@ const STATE_LEVEL_CLEAR = 3;
 const STATE_VICTORY = 4;
 const STATE_GAMEOVER = 5;
 const STATE_UNDERGROUND = 6;
+const STATE_NAME_ENTRY = 7;
+const STATE_LEADERBOARD = 8;
 
 let gameState = STATE_SELECT;
 let currentLevel = 1; // Livello 1 o Livello 2
 let selectedHeroIndex = 0; // 0=Ciuffo, 1=Leon, 2=Joao, 3=Barsalini, 4=Carlon, 5=Lindi
 let score = 0;
-let highScore = 7500;
+
+// RECORD E CLASSIFICA (ALBO D'ORO AC BRISSAGO)
+const DEFAULT_HIGHSCORES = [
+  { name: 'TAI', score: 14500, hero: 'TAIRA', level: 2, date: '01/11' },
+  { name: 'REN', score: 12800, hero: 'RENZO', level: 2, date: '02/11' },
+  { name: 'SAN', score: 9800, hero: 'SANDRO', level: 2, date: '03/11' },
+  { name: 'TOL', score: 8400, hero: 'TOLIC', level: 2, date: '03/11' },
+  { name: 'VAZ', score: 7600, hero: 'VAZ', level: 2, date: '04/11' },
+  { name: 'CIU', score: 6500, hero: 'CIUFFO', level: 2, date: '04/11' },
+  { name: 'LEO', score: 5800, hero: 'LEON', level: 2, date: '04/11' },
+  { name: 'JOA', score: 4900, hero: 'JOAO', level: 2, date: '05/11' },
+  { name: 'BAR', score: 1500, hero: 'BARSALINI', level: 1, date: '05/11' }
+];
+
+function loadHighScores() {
+  try {
+    const saved = localStorage.getItem('donkey_brissago_highscores');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch(e) {}
+  return DEFAULT_HIGHSCORES.map(x => Object.assign({}, x));
+}
+
+function saveHighScores(scores) {
+  try {
+    localStorage.setItem('donkey_brissago_highscores', JSON.stringify(scores));
+  } catch(e) {}
+}
+
+let highScores = loadHighScores();
+let highScore = (highScores[0] && highScores[0].score) ? highScores[0].score : 14500;
+let lastPlayerRank = -1;
+
+let nameEntry = ['A', 'A', 'A'];
+let nameEntryIndex = 0;
+const NAME_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!?-";
 let bonusTimer = 5000;
 let bonusCountdown = 1.0;
 let lives = 3;
@@ -903,6 +942,20 @@ function handleGlobalKey(code) {
     }
   }
 
+  // Tasto L per aprire/chiudere l'Albo d'Oro e Classifica
+  if (code === 'KeyL') {
+    if (gameState === STATE_LEADERBOARD) {
+      gameState = STATE_SELECT;
+      playSound('score');
+      return;
+    } else if (gameState === STATE_SELECT || gameState === STATE_GAMEOVER) {
+      lastPlayerRank = -1;
+      gameState = STATE_LEADERBOARD;
+      playSound('score');
+      return;
+    }
+  }
+
   // Interazione nello Spogliatoio Sotterraneo (K, X, E, Spazio, Invio o tocco su Calcia)
   if (gameState === STATE_UNDERGROUND) {
     if (!isPaused && (code === 'KeyK' || code === 'KeyX' || code === 'KeyE' || code === 'Space' || code === 'Enter')) {
@@ -972,7 +1025,71 @@ function handleGlobalKey(code) {
       lives = 3;
       hasCheckpoint = false;
       checkpointLevel = 1;
+      nameEntry = ['A', 'A', 'A'];
+      nameEntryIndex = 0;
+      gameState = STATE_NAME_ENTRY;
+      playSound('score');
+      return;
+    }
+  } else if (gameState === STATE_NAME_ENTRY) {
+    if (code === 'ArrowLeft' || code === 'KeyA') {
+      nameEntryIndex = (nameEntryIndex + 2) % 3;
+      playSound('jump');
+      return;
+    }
+    if (code === 'ArrowRight' || code === 'KeyD') {
+      nameEntryIndex = (nameEntryIndex + 1) % 3;
+      playSound('jump');
+      return;
+    }
+    if (code === 'ArrowUp' || code === 'KeyW') {
+      let idx = NAME_CHARS.indexOf(nameEntry[nameEntryIndex]);
+      idx = (idx - 1 + NAME_CHARS.length) % NAME_CHARS.length;
+      nameEntry[nameEntryIndex] = NAME_CHARS[idx];
+      playSound('jump');
+      return;
+    }
+    if (code === 'ArrowDown' || code === 'KeyS') {
+      let idx = NAME_CHARS.indexOf(nameEntry[nameEntryIndex]);
+      idx = (idx + 1) % NAME_CHARS.length;
+      nameEntry[nameEntryIndex] = NAME_CHARS[idx];
+      playSound('jump');
+      return;
+    }
+    if (code === 'Backspace') {
+      nameEntry[nameEntryIndex] = 'A';
+      nameEntryIndex = Math.max(0, nameEntryIndex - 1);
+      playSound('hit');
+      return;
+    }
+    if (code.startsWith('Key') && code.length === 4) {
+      const letter = code.charAt(3).toUpperCase();
+      nameEntry[nameEntryIndex] = letter;
+      playSound('score');
+      if (nameEntryIndex < 2) nameEntryIndex++;
+      return;
+    }
+    if (code.startsWith('Digit') && code.length === 6) {
+      const num = code.charAt(5);
+      nameEntry[nameEntryIndex] = num;
+      playSound('score');
+      if (nameEntryIndex < 2) nameEntryIndex++;
+      return;
+    }
+    if (code === 'Enter' || code === 'Space' || code === 'KeyK') {
+      if (nameEntryIndex < 2) {
+        nameEntryIndex++;
+        playSound('score');
+      } else {
+        confirmHighScore();
+      }
+      return;
+    }
+  } else if (gameState === STATE_LEADERBOARD) {
+    if (code === 'Space' || code === 'Enter' || code === 'KeyK' || code === 'KeyC' || code === 'Escape' || code === 'KeyL') {
       gameState = STATE_SELECT;
+      playSound('score');
+      return;
     }
   }
 }
@@ -2187,6 +2304,16 @@ function render() {
     return;
   }
 
+  if (gameState === STATE_NAME_ENTRY) {
+    drawNameEntry();
+    return;
+  }
+
+  if (gameState === STATE_LEADERBOARD) {
+    drawLeaderboard();
+    return;
+  }
+
   if (gameState === STATE_UNDERGROUND) {
     renderUnderground();
     if (isPaused) drawPauseScreen();
@@ -2732,7 +2859,7 @@ function drawCharacterSelect() {
   ctx.fillStyle = '#00f0ff';
   ctx.font = 'bold 18px Courier New';
   ctx.textAlign = 'center';
-  ctx.fillText('[◀ / ▶] Scegli Eroe  |  [SPAZIO / INVIO / ⚽ CALCIA] Conferma Eroe', V_WIDTH / 2, V_HEIGHT - 35);
+  ctx.fillText('[◀ / ▶] Scegli Eroe  |  [SPAZIO / INVIO / ⚽] Conferma  |  [L / 🏆] ALBO D\'ORO RECORD', V_WIDTH / 2, V_HEIGHT - 35);
   ctx.textAlign = 'left';
 
   // POPUP EASTER EGG: CARLON NON E INTERESSATO!
@@ -2858,7 +2985,9 @@ function drawVictory() {
   ctx.fillText('HAI LA MIA COMPLETA FIDUCIA: CON TE E TAIRA L\'AC BRISSAGO E IN QUARTA LEGA!\'', 200, 420);
 
   ctx.fillStyle = '#00f0ff'; ctx.font = 'bold 20px Courier New';
-  ctx.fillText('TOCCA LO SCHERMO O PREMI [SPAZIO] PER GIOCARE ANCORA', 310, 465);
+  ctx.textAlign = 'center';
+  ctx.fillText('TOCCA LO SCHERMO O PREMI [SPAZIO] PER REGISTRARE IL RECORD NELL\'ALBO D\'ORO!', V_WIDTH / 2, 465);
+  ctx.textAlign = 'left';
 }
 
 function drawGameOver() {
@@ -3246,6 +3375,259 @@ function renderUnderground() {
   ctx.fillStyle = '#38bdf8';
   ctx.textAlign = 'right';
   ctx.fillText('[C / ESC] MENU SELEZIONE EROI  |  [P] PAUSA  |  [▲ SCALA A SINISTRA] TORNA AL CAMPO', V_WIDTH - 30, V_HEIGHT - 16);
+
+  ctx.restore();
+}
+
+
+// -------------------------------------------------------------------------
+// CLASSIFICA GENERALE & INSERIMENTO RECORD 3 LETTERE (ALBO D'ORO)
+// -------------------------------------------------------------------------
+
+function confirmHighScore() {
+  const nickname = nameEntry.join('').toUpperCase();
+  const today = new Date();
+  const dateStr = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth() + 1).padStart(2, '0');
+
+  const newEntry = {
+    name: nickname,
+    score: score,
+    hero: hero.name,
+    level: currentLevel,
+    date: dateStr
+  };
+
+  highScores.push(newEntry);
+  highScores.sort((a, b) => b.score - a.score);
+  if (highScores.length > 10) highScores = highScores.slice(0, 10);
+
+  lastPlayerRank = highScores.findIndex(e => e === newEntry);
+  saveHighScores(highScores);
+  highScore = highScores[0] ? highScores[0].score : score;
+
+  playSound('victory');
+  gameState = STATE_LEADERBOARD;
+}
+
+function drawNameEntry() {
+  ctx.save();
+  ctx.fillStyle = '#050714';
+  ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+  const boxW = 920;
+  const boxH = 570;
+  const boxX = (V_WIDTH - boxW) / 2;
+  const boxY = (V_HEIGHT - boxH) / 2;
+
+  drawBox(boxX, boxY, boxW, boxH, 'rgba(12, 18, 36, 0.98)', '#ffd700');
+
+  // Titolo Arcade Gold
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 30px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('★ ALBO D\'ORO: REGISTRA IL TUO RECORD! ★', V_WIDTH / 2, boxY + 55);
+
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 20px Courier New';
+  ctx.fillText('PROMOZIONE IN QUARTA LEGA CONQUISTATA!', V_WIDTH / 2, boxY + 95);
+
+  // Eroe portrait o sprite
+  let heroCharKey = (selectedHeroIndex === 0 || hero.name === 'CIUFFO') ? 'ciuffo'
+    : (selectedHeroIndex === 1 || hero.name === 'LEON') ? 'leon'
+    : (selectedHeroIndex === 2 || hero.name === 'JOAO') ? 'joao'
+    : (selectedHeroIndex === 3 || hero.name === 'BARSALINI') ? 'barsalini'
+    : (selectedHeroIndex === 4 || hero.name === 'CARLON') ? 'carlon'
+    : 'lindi';
+
+  let heroImgObj = null;
+  if (sprites.characters && sprites.characters[heroCharKey]) {
+    const charSprites = sprites.characters[heroCharKey];
+    heroImgObj = charSprites.cheer || charSprites.celebrate || charSprites.idle;
+  }
+
+  if (heroImgObj && heroImgObj.img) {
+    const hH = 110;
+    const hW = Math.round(hH * (heroImgObj.w / heroImgObj.h));
+    ctx.drawImage(heroImgObj.img, V_WIDTH / 2 - hW / 2, boxY + 120, hW, hH);
+  }
+
+  // Punteggio finale in evidenza
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px Courier New';
+  ctx.fillText(`EROE: ${hero.name}   |   PUNTEGGIO: ${score} PUNTI`, V_WIDTH / 2, boxY + 265);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 18px Courier New';
+  ctx.fillText('INSERISCI LE TUE 3 INIZIALI:', V_WIDTH / 2, boxY + 310);
+
+  // 3 riquadri per le 3 lettere
+  const slotW = 86;
+  const slotH = 96;
+  const slotGap = 24;
+  const startSlotX = V_WIDTH / 2 - (3 * slotW + 2 * slotGap) / 2;
+  const slotY = boxY + 335;
+
+  const pulse = Math.abs(Math.sin(performance.now() * 0.008));
+
+  for (let i = 0; i < 3; i++) {
+    const sx = startSlotX + i * (slotW + slotGap);
+    const isCur = (nameEntryIndex === i);
+
+    ctx.fillStyle = isCur ? 'rgba(30, 58, 100, 0.95)' : 'rgba(15, 23, 42, 0.8)';
+    ctx.fillRect(sx, slotY, slotW, slotH);
+
+    ctx.lineWidth = isCur ? 4 : 2;
+    ctx.strokeStyle = isCur ? '#ffd700' : '#475569';
+    ctx.strokeRect(sx, slotY, slotW, slotH);
+
+    // Lettera
+    ctx.fillStyle = isCur ? '#ffd700' : '#ffffff';
+    ctx.font = 'bold 56px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(nameEntry[i], sx + slotW / 2, slotY + 70);
+
+    // Frecce per lettera attiva
+    if (isCur) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 24px Courier New';
+      ctx.fillText('▲', sx + slotW / 2, slotY - 12 - pulse * 4);
+      ctx.fillText('▼', sx + slotW / 2, slotY + slotH + 24 + pulse * 4);
+    }
+  }
+
+  // Istruzioni comandi
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = 'bold 14px Courier New';
+  ctx.fillText('[▲ / ▼] Cambia Lettera   |   [◀ / ▶] Sposta Lettera   |   [INVIO / ⚽] Conferma', V_WIDTH / 2, boxY + 490);
+  ctx.fillStyle = '#a855f7';
+  ctx.fillText('Puoi anche digitare direttamente le lettere (A-Z) da tastiera!', V_WIDTH / 2, boxY + 520);
+
+  ctx.restore();
+}
+
+function drawLeaderboard() {
+  ctx.save();
+  ctx.fillStyle = '#050714';
+  ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+  const boxW = 1040;
+  const boxH = 630;
+  const boxX = (V_WIDTH - boxW) / 2;
+  const boxY = (V_HEIGHT - boxH) / 2;
+
+  drawBox(boxX, boxY, boxW, boxH, 'rgba(12, 18, 36, 0.98)', '#a855f7');
+
+  // Titolo oro & viola
+  ctx.fillStyle = '#ffd700';
+  ctx.font = 'bold 30px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('🏆 ALBO D\'ORO & CLASSIFICA AC BRISSAGO 🏆', V_WIDTH / 2, boxY + 50);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = '16px Courier New';
+  ctx.fillText('I MIGLIORI RECORD DI SEMPRE NELLA CONQUISTA DELLA QUARTA LEGA', V_WIDTH / 2, boxY + 80);
+
+  // Tabella Header
+  const rowStartX = boxX + 40;
+  const tableW = boxW - 80;
+  const headerY = boxY + 120;
+
+  ctx.fillStyle = 'rgba(30, 41, 59, 0.9)';
+  ctx.fillRect(rowStartX, headerY - 22, tableW, 30);
+  ctx.strokeStyle = '#475569';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(rowStartX, headerY - 22, tableW, 30);
+
+  ctx.fillStyle = '#fde047';
+  ctx.font = 'bold 14px Courier New';
+  ctx.textAlign = 'left';
+  ctx.fillText('POS', rowStartX + 15, headerY);
+  ctx.fillText('NOME', rowStartX + 95, headerY);
+  ctx.fillText('EROE', rowStartX + 200, headerY);
+  ctx.fillText('LIV.', rowStartX + 420, headerY);
+  ctx.fillText('DATA', rowStartX + 540, headerY);
+  ctx.textAlign = 'right';
+  ctx.fillText('PUNTEGGIO', rowStartX + tableW - 20, headerY);
+
+  // Righe classifica (Top 10)
+  const rowH = 40;
+  const pulse = Math.abs(Math.sin(performance.now() * 0.008));
+
+  highScores.slice(0, 10).forEach((entry, i) => {
+    const ry = headerY + 20 + i * rowH;
+    const isPlayer = (i === lastPlayerRank);
+
+    // Sfondo riga
+    if (isPlayer) {
+      ctx.fillStyle = `rgba(34, 197, 94, ${0.20 + pulse * 0.15})`;
+      ctx.fillRect(rowStartX, ry - 14, tableW, rowH - 4);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#22c55e';
+      ctx.strokeRect(rowStartX, ry - 14, tableW, rowH - 4);
+    } else if (i % 2 === 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.fillRect(rowStartX, ry - 14, tableW, rowH - 4);
+    }
+
+    // Posizione & Medaglia
+    let posStr = `${i + 1}°`;
+    let posColor = '#94a3b8';
+    if (i === 0) { posStr = '🥇 1°'; posColor = '#ffd700'; }
+    else if (i === 1) { posStr = '🥈 2°'; posColor = '#e2e8f0'; }
+    else if (i === 2) { posStr = '🥉 3°'; posColor = '#f59e0b'; }
+
+    ctx.font = 'bold 16px Courier New';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = posColor;
+    ctx.fillText(posStr, rowStartX + 12, ry + 12);
+
+    // Nome (3 lettere)
+    ctx.fillStyle = isPlayer ? '#ffd700' : '#ffffff';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText(entry.name, rowStartX + 100, ry + 12);
+
+    // Eroe
+    let heroColor = '#38bdf8';
+    if (entry.hero === 'LINDI') heroColor = '#10b981';
+    else if (entry.hero === 'CIUFFO') heroColor = '#22c55e';
+    else if (entry.hero === 'LEON') heroColor = '#38bdf8';
+    else if (entry.hero === 'JOAO') heroColor = '#f97316';
+    else if (entry.hero === 'BARSALINI') heroColor = '#ef4444';
+    else if (entry.hero === 'CARLON') heroColor = '#a855f7';
+    else if (entry.hero === 'TAIRA') heroColor = '#f59e0b';
+    else if (entry.hero === 'RENZO') heroColor = '#ef4444';
+
+    ctx.fillStyle = heroColor;
+    ctx.font = 'bold 15px Courier New';
+    ctx.fillText(entry.hero, rowStartX + 200, ry + 12);
+
+    // Livello
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '14px Courier New';
+    ctx.fillText(`LIV ${entry.level || 2}`, rowStartX + 420, ry + 12);
+
+    // Data
+    ctx.fillText(entry.date || '--/--', rowStartX + 540, ry + 12);
+
+    // Punti
+    ctx.textAlign = 'right';
+    ctx.fillStyle = isPlayer ? '#ffd700' : '#fde047';
+    ctx.font = 'bold 18px Courier New';
+    ctx.fillText(`${entry.score.toLocaleString()} PTS`, rowStartX + tableW - 20, ry + 12);
+
+    if (isPlayer) {
+      ctx.fillStyle = '#22c55e';
+      ctx.font = 'bold 12px Courier New';
+      ctx.textAlign = 'left';
+      ctx.fillText('★ TUO RECORD!', rowStartX + tableW + 8 - 190, ry + 12);
+    }
+  });
+
+  // Footer istruzioni
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 17px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('[SPAZIO / INVIO / 👥 EROI / C / L] Torna alla Selezione Eroi', V_WIDTH / 2, boxY + boxH - 25);
 
   ctx.restore();
 }

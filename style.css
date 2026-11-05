@@ -118,6 +118,27 @@ html, body {
   color: #000;
 }
 
+/* PULSANTE CLASSIFICA RECORD IN ALTO A SINISTRA (L) */
+.leaderboard-btn {
+  position: absolute;
+  top: 16px;
+  left: 135px;
+  padding: 8px 16px;
+  font-size: 14px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 2px solid #a855f7;
+  color: #c084fc;
+  z-index: 150;
+  pointer-events: auto;
+  box-shadow: 0 4px 15px rgba(168, 85, 247, 0.25);
+}
+
+.leaderboard-btn:active, .leaderboard-btn.pressed {
+  background: #a855f7;
+  color: #fff;
+}
+
 /* D-PAD A CROCE */
 .dpad-zone {
   display: flex;
